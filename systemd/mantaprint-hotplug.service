@@ -1,0 +1,18 @@
+[Unit]
+Description=MantaPrint USB Printer Hotplug Provisioning & Avahi Sync
+After=cups.service avahi-daemon.service
+Wants=cups.service avahi-daemon.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mantaprint/core
+Environment="PYTHONPATH=/opt/mantaprint/core:/opt/mantaprint"
+ExecStart=/usr/bin/python3 -c "import sys; sys.path.extend(['/opt/mantaprint/core', '/opt/mantaprint']); import printer_manager; printer_manager.sync_all_printers()"
+TimeoutSec=30
+MemoryHigh=100M
+MemoryMax=150M
+LimitNOFILE=8192
+Nice=0
+
+[Install]
+WantedBy=multi-user.target

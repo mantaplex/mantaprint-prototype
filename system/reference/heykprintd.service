@@ -1,0 +1,37 @@
+# /etc/systemd/system/heykprintd.service
+# Systemd service unit for HeykPrint Management Daemon
+
+[Unit]
+Description=HeykPrint Event-Driven Print Management Daemon
+Documentation=https://github.com/heykprint/heykprint
+After=network.target cups.service avahi-daemon.service
+Requires=cups.service avahi-daemon.service
+Wants=systemd-udevd.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/python3 /opt/heykprint/heykprintd.py --config /etc/heykprint/config.json
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3s
+WatchdogSec=30s
+
+# Process Sandboxing & Resource Management (2GB RAM device)
+User=root
+Group=lp
+MemoryMax=256M
+TasksMax=64
+CPUWeight=100
+
+# Security Boundaries
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/heykprint /etc/cups /etc/avahi/services /var/spool/cups
+RuntimeDirectory=heykprint
+RuntimeDirectoryMode=0755
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

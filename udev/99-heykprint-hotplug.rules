@@ -1,0 +1,9 @@
+# HeykPrint Zero-Delay USB Printer Hotplug Detection Rules
+# Triggers instantaneous queue provisioning and Avahi mDNS publication
+
+# USB Printer interface class 0x07 (Printer), subclass 0x01 (Printer)
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:0701*:*", \
+    RUN+="/usr/bin/systemctl --no-block restart heykprint-hotplug.service"
+
+ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:0701*:*", \
+    RUN+="/usr/bin/systemctl --no-block restart heykprint-hotplug.service"

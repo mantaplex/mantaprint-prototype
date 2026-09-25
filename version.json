@@ -1,0 +1,37 @@
+{
+  "name": "mantaprint-hub",
+  "appliance": "mantaprint-hub",
+  "version": "0.3.0",
+  "semantic": {
+    "major": 0,
+    "minor": 3,
+    "patch": 0
+  },
+  "git": {
+    "commit": "HEAD",
+    "branch": "main",
+    "tag": "v0.3.0"
+  },
+  "build": {
+    "timestamp": "2026-09-25T12:00:00Z",
+    "target_arch": "aarch64",
+    "soc": "meson64-s905x",
+    "os": "Armbian Linux (Debian 12 Bookworm)",
+    "node_runtime": "v20.x",
+    "python_runtime": "3.11.x"
+  },
+  "channel": "prototype",
+  "changelog": [
+    "PROTOTYPE RELEASE: MantaPrint is published as a prototype. It is not hardened for production, sensitive data or regulated environments. Read SECURITY.md and docs/KNOWN-LIMITATIONS.md before installing.",
+    "New home: github.com/mantaplex/mantaprint-prototype. All updater and documentation links point to the new repository.",
+    "Installer now shows a prototype risk notice and requires explicit acceptance before changing the system; acceptance is recorded in /etc/mantaprint/prototype-ack.json.",
+    "Every web app (Hub, Scan Studio, Scanner PWA, MantaPool, console), the TUI and /api/version are labelled as Prototype."
+  ],
+  "components": {
+    "core": "0.3.0",
+    "web": "0.3.0",
+    "frontend": "0.3.0",
+    "smart_usb_backend": "1.2.0",
+    "captdriver": "0.2.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "enabled": false,
+  "server_url": "ws://127.0.0.1:8080/ws/agent",
+  "enrollment_token": "<YOUR_ENROLLMENT_TOKEN>",
+  "device_id": "mantaprint-device",
+  "poll_interval_sec": 10,
+  "auth_token": ""
+}

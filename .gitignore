@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+.pytest_cache/
+
+# Node & Frontend Builds
+node_modules/
+frontend/dist/
+apps/**/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# AI & Assistant Agent Metadata
+.system_generated/
+.gemini/
+
+# Appliance Runtime & Mount Points
+/mnt/data/
+/run/mantaprint/
+
+# Archives & Backup Files
+*.tar.gz
+*.bak
+*.backup
+
+# OS & IDE Junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs & Diagnostics
+*.log
+
+# Local Staging, Secrets & Databases
+.env
+.env.local
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+config/.hub_secret
+config/paired_clients.json
+.e2e-samples/
+frontend/public/ocr/

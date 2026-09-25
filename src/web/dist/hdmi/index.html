@@ -1,0 +1,2212 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1280, height=720, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MantaPrint Hub (Prototype) - HDMI Console</title>
+  <style>
+    /* ==========================================================================
+       MANTAPRINT HUB - 10-FOOT 720P HDMI TV CONSOLE
+       Strict Performance Budget: 0% CPU Idle, Zero Blur Filters, Zero Layout Thrashing.
+       ========================================================================== */
+    :root {
+      --bg-canvas: #090d16;
+      --bg-header: #0d1424;
+      --bg-sidebar: #0f172a;
+      --bg-card: #131d31;
+      --bg-card-subtle: #18233c;
+      --bg-focus: #1e3a5f;
+      --border-main: #1e293b;
+      --border-bright: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --focus-ring: #38bdf8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      outline: none;
+    }
+
+    html, body {
+      width: 1280px;
+      height: 720px;
+      max-width: 1280px;
+      max-height: 720px;
+      overflow: hidden;
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 0ms Instant High-Visibility TV Focus Indicator */
+    :focus, .tv-focused {
+      outline: 3px solid var(--focus-ring) !important;
+      outline-offset: 2px !important;
+      background-color: var(--bg-focus) !important;
+      color: #ffffff !important;
+      box-shadow: none !important;
+      transition: none !important;
+    }
+
+    /* Top Bar Header (56px) */
+    header {
+      width: 1280px;
+      height: 56px;
+      background-color: var(--bg-header);
+      border-bottom: 1px solid var(--border-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background-color: var(--accent);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-badge {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background-color: rgba(37, 99, 235, 0.25);
+      color: #60a5fa;
+      border: 1px solid rgba(96, 165, 250, 0.3);
+    }
+
+    .header-telemetry {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .tele-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background-color: #131c2e;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border-main);
+    }
+
+    .tele-val {
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--text-dim);
+      display: inline-block;
+    }
+    .status-dot.online { background-color: var(--success); }
+    .status-dot.offline { background-color: var(--danger); }
+    .status-dot.warning { background-color: var(--warning); }
+
+    /* Main Container (618px) */
+    .main-container {
+      width: 1280px;
+      height: 618px;
+      display: flex;
+    }
+
+    /* Left Navigation Tabs Sidebar (240px) */
+    nav.sidebar {
+      width: 240px;
+      height: 100%;
+      background-color: var(--bg-sidebar);
+      border-right: 1px solid var(--border-main);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .nav-tab {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 6px;
+      background-color: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-tab.active {
+      background-color: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+    }
+
+    .nav-tab-icon {
+      font-size: 18px;
+      width: 24px;
+      text-align: center;
+    }
+
+    /* Workspace Content Area */
+    .workspace {
+      width: 1040px;
+      height: 100%;
+      padding: 20px 24px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background-color: var(--bg-canvas);
+    }
+
+    .tab-panel {
+      display: none;
+      width: 100%;
+      height: 100%;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    /* Common Card & Form Styles */
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border-bright);
+      color: var(--text-main);
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn-success {
+      background-color: #047857;
+      border-color: #059669;
+      color: #fff;
+    }
+
+    .btn-danger {
+      background-color: #b91c1c;
+      border-color: #dc2626;
+      color: #fff;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-input {
+      width: 100%;
+      background-color: #0d1424;
+      border: 1px solid var(--border-bright);
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* WI-FI PANEL LAYOUT */
+    .wifi-grid {
+      display: grid;
+      grid-template-columns: 520px 440px;
+      gap: 20px;
+      height: 560px;
+    }
+
+    .wifi-list-container {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      padding: 14px;
+      height: 560px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .wifi-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-main);
+    }
+
+    .wifi-items {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 4px;
+    }
+
+    .wifi-item {
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 6px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    .wifi-item.selected {
+      border-color: var(--accent);
+      background-color: rgba(37, 99, 235, 0.15);
+    }
+
+    .wifi-item.connected {
+      border-color: var(--success);
+    }
+
+    .wifi-item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .wifi-ssid {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      max-width: 320px;
+    }
+
+    .wifi-item-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: #1e293b;
+      color: var(--text-muted);
+      border: 1px solid #334155;
+    }
+
+    .badge-success {
+      background-color: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border-color: rgba(52, 211, 153, 0.3);
+    }
+
+    .badge-primary {
+      background-color: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+      border-color: rgba(96, 165, 250, 0.3);
+    }
+
+    .wifi-connect-box {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      height: 560px;
+    }
+
+    /* ETHERNET PANEL LAYOUT */
+    .eth-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .info-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-main);
+    }
+
+    .info-table td:first-child {
+      color: var(--text-muted);
+      font-weight: 600;
+      width: 40%;
+    }
+
+    .info-table td:last-child {
+      color: #fff;
+      font-weight: 700;
+      font-family: monospace;
+    }
+
+    /* STATUS & DIAGNOSTICS PANEL LAYOUT */
+    .diag-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .diag-box {
+      background-color: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 13px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .diag-output {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    /* Bottom Help Bar (46px) */
+    footer {
+      width: 1280px;
+      height: 46px;
+      background-color: var(--bg-header);
+      border-top: 1px solid var(--border-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .key-hints {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .key-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .key-icon {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #fff;
+      font-weight: 700;
+      font-family: monospace;
+      font-size: 11px;
+    }
+
+    /* Modal Dialogs (Zero Blur, High Contrast) */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 1280px;
+      height: 720px;
+      background-color: rgba(0, 0, 0, 0.75);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background-color: #101726;
+      border: 2px solid var(--border-bright);
+      border-radius: 8px;
+      padding: 24px;
+      width: 500px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    /* VIRTUAL ON-SCREEN KEYBOARD (OSK) */
+    .osk-container {
+      background-color: #0f172a;
+      border: 2px solid var(--border-bright);
+      border-radius: 8px;
+      width: 820px;
+      padding: 16px 20px;
+    }
+
+    .osk-input-preview {
+      width: 100%;
+      background-color: #090d16;
+      border: 1px solid var(--border-bright);
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .osk-keyboard-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .osk-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .osk-key {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      color: #fff;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: 700;
+      height: 42px;
+      min-width: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .osk-key-wide { min-width: 80px; }
+    .osk-key-extra-wide { min-width: 140px; }
+    .osk-key-space { flex: 1; max-width: 260px; }
+
+    /* Alert Banner */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 10px;
+      display: none;
+    }
+    .alert.active { display: block; }
+    .alert-success { background-color: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+    .alert-danger { background-color: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+    .alert-info { background-color: rgba(37, 99, 235, 0.2); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3); }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Bar -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-icon">H</div>
+      <div>
+        <span class="brand-title">MantaPrint Hub</span>
+        <span class="brand-badge" style="margin-left: 8px;">Universal USB Print Hub</span>
+        <span class="brand-badge" style="margin-left: 8px; background: rgba(251,191,36,0.15); color: #fcd34d; border: 1px solid rgba(251,191,36,0.4);" title="Prototype - not for production or sensitive data">PROTOTYPE</span>
+      </div>
+    </div>
+    <div class="header-telemetry">
+      <div class="tele-item">
+        <span class="status-dot offline" id="top-status-dot"></span>
+        <span id="top-ip-label">IP:</span>
+        <span class="tele-val" id="top-ip-val">Offline</span>
+      </div>
+      <div class="tele-item">
+        <span>mDNS:</span>
+        <span class="tele-val">mantaprint.local</span>
+      </div>
+      <div class="tele-item">
+        <span>CUPS:</span>
+        <span class="tele-val" id="top-cups-val">--</span>
+      </div>
+      <div class="tele-item">
+        <span>SoC Temp:</span>
+        <span class="tele-val" id="top-temp-val">--°C</span>
+      </div>
+      <div class="tele-item">
+        <span>Jam:</span>
+        <span class="tele-val" id="top-clock">--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Left Sidebar (Tabs) -->
+    <nav class="sidebar" id="sidebar-nav">
+      <button class="nav-tab active" data-tab="wifi" tabindex="0">
+        <span class="nav-tab-icon">📶</span>
+        <span>Wi-Fi Network</span>
+      </button>
+      <button class="nav-tab" data-tab="ethernet" tabindex="0">
+        <span class="nav-tab-icon">🔌</span>
+        <span>Ethernet LAN</span>
+      </button>
+      <button class="nav-tab" data-tab="status" tabindex="0">
+        <span class="nav-tab-icon">📊</span>
+        <span>Status & Tools</span>
+      </button>
+      <button class="nav-tab" data-tab="remote" tabindex="0">
+        <span class="nav-tab-icon">🎮</span>
+        <span>IR Remote Setup</span>
+      </button>
+    </nav>
+
+    <!-- Workspace Content Area -->
+    <main class="workspace" id="workspace">
+
+      <!-- PANEL 1: WI-FI NETWORK -->
+      <section class="tab-panel active" id="panel-wifi">
+        <div class="wifi-grid">
+          <!-- Left: Scanned Wi-Fi SSIDs -->
+          <div class="wifi-list-container">
+            <div class="wifi-list-header">
+              <div>
+                <strong style="color: #fff; font-size: 15px;">Daftar Jaringan Wi-Fi</strong>
+                <span id="wifi-count" style="font-size: 12px; color: var(--text-dim); margin-left: 6px;">(0 ditemukan)</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm tv-nav" id="btn-wifi-scan">
+                  <span>🔄</span> Scan Ulang
+                </button>
+                <button class="btn btn-sm tv-nav" id="btn-wifi-radio">
+                  <span>📻</span> Radio: ON
+                </button>
+              </div>
+            </div>
+            <div class="wifi-items" id="wifi-items-list">
+              <div style="padding: 24px; text-align: center; color: var(--text-dim); font-size: 13px;">
+                Memuat daftar jaringan Wi-Fi...
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Connection Settings & Status -->
+          <div class="wifi-connect-box">
+            <div class="card-title">
+              <span>Sambungkan Wi-Fi</span>
+              <span class="badge badge-primary" id="wifi-selected-sec">WPA2</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nama SSID Jaringan</label>
+              <input type="text" class="form-input tv-nav" id="wifi-ssid-input" placeholder="Pilih Wi-Fi di sebelah kiri" readonly>
+            </div>
+
+            <div class="form-group" id="wifi-pwd-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" style="margin-bottom: 0;">Kata Sandi (Password)</label>
+                <button class="btn btn-sm tv-nav" id="btn-toggle-pwd-vis" style="padding: 2px 8px; font-size: 11px;">
+                  👁 Tampilkan
+                </button>
+              </div>
+              <input type="password" class="form-input tv-nav" id="wifi-password-input" placeholder="Masukkan kata sandi Wi-Fi...">
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+              <button class="btn tv-nav" id="btn-open-osk" style="flex: 1;">
+                ⌨ Papan Ketik Layar (OSK)
+              </button>
+            </div>
+
+            <button class="btn btn-primary tv-nav" id="btn-wifi-connect" style="margin-top: 8px; height: 44px; font-size: 15px;">
+              ⚡ Hubungkan Sekarang
+            </button>
+
+            <!-- Alert Toast Message -->
+            <div class="alert" id="wifi-alert"></div>
+
+            <!-- Current Connected Status Card -->
+            <div class="card" style="margin-top: auto; margin-bottom: 0; background-color: var(--bg-card-subtle);">
+              <div style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">KONEKSI SAAT INI</div>
+              <div style="font-size: 14px; font-weight: 700; color: #fff;" id="wifi-current-ssid">Tidak terhubung</div>
+              <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;" id="wifi-current-ip">IP: Offline</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANEL 2: ETHERNET LAN -->
+      <section class="tab-panel" id="panel-ethernet">
+        <div class="eth-container">
+          <!-- Ethernet Mode & Configuration -->
+          <div class="card">
+            <div class="card-title">
+              <span>Konfigurasi Port Ethernet (eth0)</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Mode Alamat IP</label>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn tv-nav btn-primary" id="btn-eth-mode-dhcp" style="flex: 1;">
+                  ● DHCP Otomatis
+                </button>
+                <button class="btn tv-nav" id="btn-eth-mode-static" style="flex: 1;">
+                  ○ IP Statis
+                </button>
+              </div>
+            </div>
+
+            <!-- Static IP Inputs (Shown when Static mode is selected) -->
+            <div id="eth-static-form" style="display: none; margin-top: 14px;">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Alamat IP (IPv4)</label>
+                  <input type="text" class="form-input tv-nav" id="eth-ip-input" placeholder="contoh: 192.168.1.150">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Subnet Prefix (CIDR)</label>
+                  <input type="text" class="form-input tv-nav" id="eth-prefix-input" placeholder="24" value="24">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Default Gateway</label>
+                <input type="text" class="form-input tv-nav" id="eth-gw-input" placeholder="contoh: 192.168.1.1">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">DNS Server 1</label>
+                  <input type="text" class="form-input tv-nav" id="eth-dns1-input" placeholder="1.1.1.1" value="1.1.1.1">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">DNS Server 2</label>
+                  <input type="text" class="form-input tv-nav" id="eth-dns2-input" placeholder="8.8.8.8" value="8.8.8.8">
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+              <button class="btn btn-primary tv-nav" id="btn-eth-apply" style="flex: 1; height: 42px;">
+                💾 Terapkan Pengaturan Ethernet
+              </button>
+              <button class="btn tv-nav" id="btn-eth-reset" style="height: 42px;">
+                ↩ Reset ke DHCP
+              </button>
+            </div>
+
+            <div class="alert" id="eth-alert"></div>
+          </div>
+
+          <!-- Ethernet Live Telemetry & Link Status -->
+          <div class="card">
+            <div class="card-title">
+              <span>Status Fisik Antarmuka Kabel</span>
+              <span class="badge badge-success" id="eth-carrier-badge">Tersambung</span>
+            </div>
+
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <td>Status Port:</td>
+                  <td id="eth-status-val">Operasional UP</td>
+                </tr>
+                <tr>
+                  <td>Alamat IP Saat Ini:</td>
+                  <td id="eth-cur-ip-val">--</td>
+                </tr>
+                <tr>
+                  <td>Kecepatan Link:</td>
+                  <td id="eth-speed-val">100 Mb/s (Full Duplex)</td>
+                </tr>
+                <tr>
+                  <td>MAC Hardware:</td>
+                  <td id="eth-mac-val">0E:73:1E:5D:0F:C8</td>
+                </tr>
+                <tr>
+                  <td>Default Gateway:</td>
+                  <td id="eth-cur-gw-val">--</td>
+                </tr>
+                <tr>
+                  <td>Server DNS:</td>
+                  <td id="eth-cur-dns-val">--</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="margin-top: 20px;">
+              <button class="btn tv-nav" id="btn-eth-refresh" style="width: 100%;">
+                🔄 Refresh Status Jaringan Kabel
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANEL 3: STATUS & TOOLS -->
+      <section class="tab-panel" id="panel-status">
+        <div class="diag-grid">
+          <!-- Card: System Services & Printer -->
+          <div class="card">
+            <div class="card-title">Layanan Sistem & Printer</div>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <td>CUPS Printing:</td>
+                  <td id="cups-status-val">
+                    <span class="badge badge-success">Running</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Avahi Bonjour/mDNS:</td>
+                  <td id="avahi-status-val">
+                    <span class="badge badge-success">Running</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Status Printer USB:</td>
+                  <td id="printer-status-val">Siap / Siaga</td>
+                </tr>
+                <tr>
+                  <td>Beban Sistem (Load):</td>
+                  <td id="sys-load-val">0.12, 0.08, 0.05</td>
+                </tr>
+                <tr>
+                  <td>Penggunaan Memori (RAM):</td>
+                  <td id="sys-ram-val">180 MB / 1024 MB</td>
+                </tr>
+                <tr>
+                  <td>Waktu Aktif (Uptime):</td>
+                  <td id="sys-uptime-val">--</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px;">
+              <button class="btn tv-nav btn-sm" id="btn-restart-cups" style="flex: 1;">
+                🔄 Restart CUPS
+              </button>
+              <button class="btn tv-nav btn-sm" id="btn-restart-avahi" style="flex: 1;">
+                🔄 Restart Avahi
+              </button>
+            </div>
+          </div>
+
+          <!-- Card: Network Diagnostics & Ping -->
+          <div class="card">
+            <div class="card-title">Diagnostik Koneksi & Latensi</div>
+
+            <div class="diag-box">
+              <div>
+                <strong style="color: #fff;">Ping Gateway Lokal</strong>
+                <div class="diag-output" id="ping-gw-result" style="color: var(--text-dim);">Belum diuji</div>
+              </div>
+              <button class="btn btn-sm tv-nav" id="btn-ping-gw">
+                ⚡ Uji Ping
+              </button>
+            </div>
+
+            <div class="diag-box">
+              <div>
+                <strong style="color: #fff;">Ping Internet (1.1.1.1)</strong>
+                <div class="diag-output" id="ping-inet-result" style="color: var(--text-dim);">Belum diuji</div>
+              </div>
+              <button class="btn btn-sm tv-nav" id="btn-ping-inet">
+                ⚡ Uji Ping
+              </button>
+            </div>
+
+            <div class="diag-box">
+              <div>
+                <strong style="color: #fff;">DNS Resolve (google.com)</strong>
+                <div class="diag-output" id="dns-result" style="color: var(--text-dim);">Belum diuji</div>
+              </div>
+              <button class="btn btn-sm tv-nav" id="btn-test-dns">
+                ⚡ Uji DNS
+              </button>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px;">
+              <button class="btn btn-danger tv-nav btn-sm" id="btn-system-reboot" style="flex: 1;">
+                ⏻ Reboot STB
+              </button>
+              <button class="btn tv-nav btn-sm" id="btn-factory-reset" style="flex: 1;">
+                ⚠️ Reset Jaringan
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANEL 4: IR REMOTE SETUP -->
+      <section class="tab-panel" id="panel-remote">
+        <div class="card" style="max-width: 800px; margin: 0 auto;">
+          <div class="card-title">
+            <span>Kalibrasi Remote Kontrol IR</span>
+            <span class="badge badge-primary" id="remote-step-badge">Siap</span>
+          </div>
+
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Panduan 11-tombol untuk memetakan remote kontrol inframerah STB Anda (D-pad Up, Down, Left, Right, OK, Back, Home, Volume).
+          </p>
+
+          <div style="background-color: var(--bg-card-subtle); border: 1px solid var(--border-main); border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;" id="remote-wizard-instruction">
+              Klik tombol di bawah untuk memulai kalibrasi remote
+            </div>
+            <div style="font-size: 32px; font-weight: 800; color: #fff; margin: 12px 0;" id="remote-target-btn">
+              Tekan "Mulai Wizard"
+            </div>
+            <div style="font-size: 14px; font-family: monospace; color: var(--focus-ring);" id="remote-scancode-display">
+              Scancode: --
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: center;">
+            <button class="btn btn-primary tv-nav" id="btn-remote-start">
+              ▶ Mulai Wizard Remote
+            </button>
+            <button class="btn tv-nav" id="btn-remote-undo" disabled>
+              ↩ Undo
+            </button>
+            <button class="btn tv-nav" id="btn-remote-skip" disabled>
+              ⏭ Lewati
+            </button>
+            <button class="btn btn-danger tv-nav" id="btn-remote-cancel" disabled>
+              ✕ Batalkan
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Bottom Key Helper Legend -->
+  <footer>
+    <div class="key-hints">
+      <div class="key-badge">
+        <span class="key-icon">▲/▼</span>
+        <span>Navigasi</span>
+      </div>
+      <div class="key-badge">
+        <span class="key-icon">◄/►</span>
+        <span>Ganti Kolom</span>
+      </div>
+      <div class="key-badge">
+        <span class="key-icon">OK / Enter</span>
+        <span>Pilih</span>
+      </div>
+      <div class="key-badge">
+        <span class="key-icon">Back / Esc</span>
+        <span>Kembali ke Menu</span>
+      </div>
+      <div class="key-badge">
+        <span class="key-icon">⌨</span>
+        <span>Keyboard USB Siap</span>
+      </div>
+    </div>
+    <div>MantaPrint Hub • Universal USB Print & Scan Hub (Multi-Device) • 720p 60Hz</div>
+  </footer>
+
+  <!-- VIRTUAL ON-SCREEN KEYBOARD MODAL (OSK) -->
+  <div class="modal-overlay" id="osk-modal">
+    <div class="osk-container">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 14px; font-weight: 700; color: #fff;">Papan Ketik Virtual (Remote D-pad)</span>
+        <span style="font-size: 12px; color: var(--text-muted);">Tekan ESC atau tombol SELESAI untuk menutup</span>
+      </div>
+
+      <div class="osk-input-preview">
+        <span id="osk-preview-text"></span>
+        <button class="btn btn-sm tv-osk-key" id="btn-osk-clear-text" style="padding: 2px 8px; font-size: 11px;">
+          ✕ Hapus Semua
+        </button>
+      </div>
+
+      <div class="osk-keyboard-grid" id="osk-grid">
+        <!-- Rows dynamically generated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRMATION MODAL -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-content">
+      <div class="modal-title" id="confirm-title">Konfirmasi Tindakan</div>
+      <p id="confirm-message" style="font-size: 14px; color: var(--text-muted); line-height: 1.5;">Apakah Anda yakin?</p>
+      <div class="modal-actions">
+        <button class="btn tv-modal-nav" id="btn-modal-cancel">Batal</button>
+        <button class="btn btn-danger tv-modal-nav" id="btn-modal-ok">Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT CONTROLLER ENGINE -->
+  <script>
+    (function() {
+      'use strict';
+
+      // ==========================================
+      // STATE & REFS
+      // ==========================================
+      const state = {
+        navMode: 'sidebar', // 'sidebar' | 'content' | 'osk' | 'modal'
+        currentTab: 'wifi',
+        tabIndex: 0,
+        wifiNetworks: [],
+        selectedWifi: null,
+        isConnectingWifi: false,
+        isWifiRadioOn: true,
+        ethernetMode: 'dhcp',
+        oskTargetInput: null,
+        oskCaps: false,
+        oskRow: 0,
+        oskCol: 0,
+        lastContentTarget: null,
+        modalCallback: null,
+        remoteWizardActive: false,
+        remotePollTimer: null
+      };
+
+      const tabs = ['wifi', 'ethernet', 'status', 'remote'];
+
+      // Elements
+      const navButtons = Array.from(document.querySelectorAll('.nav-tab'));
+      const tabPanels = {
+        wifi: document.getElementById('panel-wifi'),
+        ethernet: document.getElementById('panel-ethernet'),
+        status: document.getElementById('panel-status'),
+        remote: document.getElementById('panel-remote')
+      };
+
+      // Header Telemetry
+      const topStatusDot = document.getElementById('top-status-dot');
+      const topIpVal = document.getElementById('top-ip-val');
+      const topCupsVal = document.getElementById('top-cups-val');
+      const topTempVal = document.getElementById('top-temp-val');
+      const topClock = document.getElementById('top-clock');
+
+      // Wi-Fi Elements
+      const wifiItemsList = document.getElementById('wifi-items-list');
+      const wifiCount = document.getElementById('wifi-count');
+      const wifiSsidInput = document.getElementById('wifi-ssid-input');
+      const wifiPasswordInput = document.getElementById('wifi-password-input');
+      const wifiSelectedSec = document.getElementById('wifi-selected-sec');
+      const wifiAlert = document.getElementById('wifi-alert');
+      const btnWifiScan = document.getElementById('btn-wifi-scan');
+      const btnWifiRadio = document.getElementById('btn-wifi-radio');
+      const btnWifiConnect = document.getElementById('btn-wifi-connect');
+      const btnTogglePwdVis = document.getElementById('btn-toggle-pwd-vis');
+      const btnOpenOsk = document.getElementById('btn-open-osk');
+      const wifiCurrentSsid = document.getElementById('wifi-current-ssid');
+      const wifiCurrentIp = document.getElementById('wifi-current-ip');
+
+      // Ethernet Elements
+      const btnEthModeDhcp = document.getElementById('btn-eth-mode-dhcp');
+      const btnEthModeStatic = document.getElementById('btn-eth-mode-static');
+      const ethStaticForm = document.getElementById('eth-static-form');
+      const ethIpInput = document.getElementById('eth-ip-input');
+      const ethPrefixInput = document.getElementById('eth-prefix-input');
+      const ethGwInput = document.getElementById('eth-gw-input');
+      const ethDns1Input = document.getElementById('eth-dns1-input');
+      const ethDns2Input = document.getElementById('eth-dns2-input');
+      const btnEthApply = document.getElementById('btn-eth-apply');
+      const btnEthReset = document.getElementById('btn-eth-reset');
+      const btnEthRefresh = document.getElementById('btn-eth-refresh');
+      const ethAlert = document.getElementById('eth-alert');
+      const ethCarrierBadge = document.getElementById('eth-carrier-badge');
+      const ethStatusVal = document.getElementById('eth-status-val');
+      const ethCurIpVal = document.getElementById('eth-cur-ip-val');
+      const ethSpeedVal = document.getElementById('eth-speed-val');
+      const ethMacVal = document.getElementById('eth-mac-val');
+      const ethCurGwVal = document.getElementById('eth-cur-gw-val');
+      const ethCurDnsVal = document.getElementById('eth-cur-dns-val');
+
+      // Status & Diagnostics Elements
+      const cupsStatusVal = document.getElementById('cups-status-val');
+      const avahiStatusVal = document.getElementById('avahi-status-val');
+      const printerStatusVal = document.getElementById('printer-status-val');
+      const sysLoadVal = document.getElementById('sys-load-val');
+      const sysRamVal = document.getElementById('sys-ram-val');
+      const sysUptimeVal = document.getElementById('sys-uptime-val');
+      const btnRestartCups = document.getElementById('btn-restart-cups');
+      const btnRestartAvahi = document.getElementById('btn-restart-avahi');
+      const btnPingGw = document.getElementById('btn-ping-gw');
+      const btnPingInet = document.getElementById('btn-ping-inet');
+      const btnTestDns = document.getElementById('btn-test-dns');
+      const btnSystemReboot = document.getElementById('btn-system-reboot');
+      const btnFactoryReset = document.getElementById('btn-factory-reset');
+      const pingGwResult = document.getElementById('ping-gw-result');
+      const pingInetResult = document.getElementById('ping-inet-result');
+      const dnsResult = document.getElementById('dns-result');
+
+      // OSK Elements
+      const oskModal = document.getElementById('osk-modal');
+      const oskPreviewText = document.getElementById('osk-preview-text');
+      const oskGrid = document.getElementById('osk-grid');
+      const btnOskClearText = document.getElementById('btn-osk-clear-text');
+
+      // Confirmation Modal Elements
+      const confirmModal = document.getElementById('confirm-modal');
+      const confirmTitle = document.getElementById('confirm-title');
+      const confirmMessage = document.getElementById('confirm-message');
+      const btnModalCancel = document.getElementById('btn-modal-cancel');
+      const btnModalOk = document.getElementById('btn-modal-ok');
+
+      // Remote Wizard Elements
+      const btnRemoteStart = document.getElementById('btn-remote-start');
+      const btnRemoteUndo = document.getElementById('btn-remote-undo');
+      const btnRemoteSkip = document.getElementById('btn-remote-skip');
+      const btnRemoteCancel = document.getElementById('btn-remote-cancel');
+      const remoteTargetBtn = document.getElementById('remote-target-btn');
+      const remoteScancodeDisplay = document.getElementById('remote-scancode-display');
+      const remoteWizardInstruction = document.getElementById('remote-wizard-instruction');
+      const remoteStepBadge = document.getElementById('remote-step-badge');
+
+      // ==========================================
+      // CLOCK & BASIC TELEMETRY
+      // ==========================================
+      function updateClock() {
+        const d = new Date();
+        const h = String(d.getHours()).padStart(2, '0');
+        const m = String(d.getMinutes()).padStart(2, '0');
+        topClock.textContent = `${h}:${m}`;
+      }
+      setInterval(updateClock, 10000);
+      updateClock();
+
+      // ==========================================
+      // NAVIGATION CONTROLLER (Zero Traps, Pure Logic)
+      // ==========================================
+      function setTab(index) {
+        state.tabIndex = (index + tabs.length) % tabs.length;
+        state.currentTab = tabs[state.tabIndex];
+
+        navButtons.forEach((btn, idx) => {
+          if (idx === state.tabIndex) {
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active');
+          }
+        });
+
+        Object.keys(tabPanels).forEach(key => {
+          if (key === state.currentTab) {
+            tabPanels[key].classList.add('active');
+          } else {
+            tabPanels[key].classList.remove('active');
+          }
+        });
+      }
+
+      function focusSidebarTab(index) {
+        setTab(index);
+        state.navMode = 'sidebar';
+        navButtons[state.tabIndex].focus();
+      }
+
+      function getPanelFocusables() {
+        const currentPanel = tabPanels[state.currentTab];
+        if (!currentPanel) return [];
+        return Array.from(currentPanel.querySelectorAll('.tv-nav:not([disabled])')).filter(el => {
+          return el.offsetParent !== null; // element is visible
+        });
+      }
+
+      function enterContentArea() {
+        const focusables = getPanelFocusables();
+        if (focusables.length === 0) return;
+
+        state.navMode = 'content';
+        let target = focusables[0];
+        if (state.lastContentTarget && focusables.includes(state.lastContentTarget)) {
+          target = state.lastContentTarget;
+        }
+        target.focus();
+      }
+
+      function returnToSidebar() {
+        state.navMode = 'sidebar';
+        navButtons[state.tabIndex].focus();
+      }
+
+      // Handle Keydown Events (Remote D-pad & Full Keyboard-Only Navigation)
+      window.addEventListener('keydown', (e) => {
+        const key = e.key;
+        const keyCode = e.keyCode;
+
+        const isTab = key === 'Tab' || keyCode === 9;
+        const isUp = key === 'ArrowUp' || keyCode === 38 || (isTab && e.shiftKey);
+        const isDown = key === 'ArrowDown' || keyCode === 40 || (isTab && !e.shiftKey);
+        const isLeft = key === 'ArrowLeft' || keyCode === 37;
+        const isRight = key === 'ArrowRight' || keyCode === 39;
+        const isEnter = key === 'Enter' || keyCode === 13;
+        const isBack = key === 'Escape' || keyCode === 27 || key === 'BrowserBack';
+
+        // MODE: CONFIRMATION MODAL
+        if (state.navMode === 'modal') {
+          if (isBack) {
+            e.preventDefault();
+            closeConfirmModal(false);
+            return;
+          }
+          if (isLeft || isRight || isTab) {
+            e.preventDefault();
+            if (document.activeElement === btnModalCancel) {
+              btnModalOk.focus();
+            } else {
+              btnModalCancel.focus();
+            }
+            return;
+          }
+          if (isEnter) {
+            e.preventDefault();
+            document.activeElement.click();
+            return;
+          }
+          return;
+        }
+
+        // MODE: ON-SCREEN KEYBOARD (OSK)
+        if (state.navMode === 'osk') {
+          if (isBack) {
+            e.preventDefault();
+            closeOsk();
+            return;
+          }
+          if (isTab) {
+            e.preventDefault();
+            navigateOsk(false, false, !e.shiftKey, e.shiftKey);
+            return;
+          }
+          if (isUp || isDown || isLeft || isRight) {
+            e.preventDefault();
+            navigateOsk(isUp, isDown, isLeft, isRight);
+            return;
+          }
+          if (isEnter) {
+            e.preventDefault();
+            if (document.activeElement && document.activeElement.classList.contains('tv-osk-key')) {
+              document.activeElement.click();
+            }
+            return;
+          }
+          // Support direct physical USB typing when OSK is open
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            appendOskChar(e.key);
+            return;
+          }
+          if (key === 'Backspace') {
+            e.preventDefault();
+            deleteOskChar();
+            return;
+          }
+          return;
+        }
+
+        // MODE: SIDEBAR NAVIGATION
+        if (state.navMode === 'sidebar') {
+          if (isTab && !e.shiftKey) {
+            e.preventDefault();
+            enterContentArea();
+            return;
+          }
+          if (isUp) {
+            e.preventDefault();
+            focusSidebarTab(state.tabIndex - 1);
+            return;
+          }
+          if (isDown) {
+            e.preventDefault();
+            focusSidebarTab(state.tabIndex + 1);
+            return;
+          }
+          if (isRight || isEnter) {
+            e.preventDefault();
+            enterContentArea();
+            return;
+          }
+          if (isBack) {
+            e.preventDefault();
+            return; // Already at root
+          }
+          return;
+        }
+
+        // MODE: WORKSPACE CONTENT AREA
+        if (state.navMode === 'content') {
+          const focusables = getPanelFocusables();
+          if (focusables.length === 0) {
+            returnToSidebar();
+            return;
+          }
+
+          const activeEl = document.activeElement;
+          const currentIndex = focusables.indexOf(activeEl);
+
+          if (isBack) {
+            e.preventDefault();
+            returnToSidebar();
+            return;
+          }
+
+          // If focused in a text input, allow arrow Left/Right inside the text unless at borders
+          const isTextInput = activeEl && activeEl.tagName === 'INPUT' && activeEl.type !== 'checkbox';
+
+          if (isLeft) {
+            if (isTextInput && typeof activeEl.selectionStart === 'number' && activeEl.selectionStart > 0) {
+              return; // Allow native cursor navigation inside text
+            }
+
+            // Special case for Wi-Fi grid: if in right column, move to left list
+            if (state.currentTab === 'wifi') {
+              const inRightBox = activeEl.closest('.wifi-connect-box');
+              if (inRightBox) {
+                const wifiItems = Array.from(wifiItemsList.querySelectorAll('.wifi-item'));
+                if (wifiItems.length > 0) {
+                  e.preventDefault();
+                  const sel = wifiItems.find(i => i.classList.contains('selected')) || wifiItems[0];
+                  sel.focus();
+                  state.lastContentTarget = sel;
+                  return;
+                }
+              }
+            }
+            e.preventDefault();
+            returnToSidebar();
+            return;
+          }
+
+          if (isRight) {
+            if (isTextInput && typeof activeEl.selectionEnd === 'number' && activeEl.selectionEnd < activeEl.value.length) {
+              return; // Allow native cursor navigation inside text
+            }
+
+            // Wi-Fi Grid: Jump from Wi-Fi list to password input / connect box
+            if (state.currentTab === 'wifi') {
+              const inLeftList = activeEl.closest('.wifi-list-container');
+              if (inLeftList) {
+                e.preventDefault();
+                wifiPasswordInput.focus();
+                state.lastContentTarget = wifiPasswordInput;
+                return;
+              }
+            }
+          }
+
+          if (isUp) {
+            e.preventDefault();
+            if (currentIndex > 0) {
+              focusables[currentIndex - 1].focus();
+              state.lastContentTarget = focusables[currentIndex - 1];
+            } else if (isTab && e.shiftKey && currentIndex === 0) {
+              returnToSidebar();
+            } else {
+              // Clamp at top! Never trap or jump to arbitrary header buttons.
+              focusables[0].focus();
+              state.lastContentTarget = focusables[0];
+            }
+            return;
+          }
+
+          if (isDown) {
+            e.preventDefault();
+            if (currentIndex >= 0 && currentIndex < focusables.length - 1) {
+              focusables[currentIndex + 1].focus();
+              state.lastContentTarget = focusables[currentIndex + 1];
+            } else if (currentIndex === -1 && focusables.length > 0) {
+              focusables[0].focus();
+              state.lastContentTarget = focusables[0];
+            }
+            return;
+          }
+
+          if (isEnter) {
+            if (activeEl) {
+              // If focused on an input element, automatically open the OSK
+              if (activeEl === wifiPasswordInput || activeEl.tagName === 'INPUT' && !activeEl.readOnly) {
+                e.preventDefault();
+                openOsk(activeEl);
+                return;
+              }
+              // Normal button or clickable item
+              activeEl.click();
+            }
+            return;
+          }
+        }
+      });
+
+      // Keep focus track on mouse click or tab
+      document.addEventListener('focusin', (e) => {
+        if (e.target.classList.contains('nav-tab')) {
+          state.navMode = 'sidebar';
+          const idx = navButtons.indexOf(e.target);
+          if (idx !== -1) setTab(idx);
+        } else if (e.target.classList.contains('tv-nav')) {
+          state.navMode = 'content';
+          state.lastContentTarget = e.target;
+        } else if (e.target.classList.contains('tv-osk-key')) {
+          state.navMode = 'osk';
+        } else if (e.target.classList.contains('tv-modal-nav')) {
+          state.navMode = 'modal';
+        }
+      });
+
+      // ==========================================
+      // VIRTUAL ON-SCREEN KEYBOARD (OSK) ENGINE
+      // ==========================================
+      const oskLayoutNormal = [
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
+        ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'],
+        ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '@'],
+        ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', '!', '?'],
+        ['CAPS', 'SPACE', 'BACK', 'CLEAR', 'DONE']
+      ];
+
+      let oskKeyElements = [];
+
+      function renderOsk() {
+        oskGrid.innerHTML = '';
+        oskKeyElements = [];
+
+        oskLayoutNormal.forEach((rowKeys, rIdx) => {
+          const rowDiv = document.createElement('div');
+          rowDiv.className = 'osk-row';
+          const rowKeyEls = [];
+
+          rowKeys.forEach((keyVal, cIdx) => {
+            const btn = document.createElement('button');
+            btn.className = 'osk-key tv-osk-key';
+            let label = keyVal;
+
+            if (keyVal.length === 1 && /[a-z]/i.test(keyVal)) {
+              label = state.oskCaps ? keyVal.toUpperCase() : keyVal.toLowerCase();
+            }
+
+            if (keyVal === 'CAPS') {
+              btn.classList.add('osk-key-wide');
+              btn.textContent = state.oskCaps ? '⇪ CAPS ON' : '⇧ CAPS';
+            } else if (keyVal === 'SPACE') {
+              btn.classList.add('osk-key-space');
+              btn.textContent = 'SPASI';
+            } else if (keyVal === 'BACK') {
+              btn.classList.add('osk-key-wide');
+              btn.textContent = '⌫ Hapus';
+            } else if (keyVal === 'CLEAR') {
+              btn.classList.add('osk-key-wide');
+              btn.textContent = '✕ Bersih';
+            } else if (keyVal === 'DONE') {
+              btn.classList.add('osk-key-wide', 'btn-primary');
+              btn.textContent = '✓ Selesai';
+            } else {
+              btn.textContent = label;
+            }
+
+            btn.setAttribute('data-row', rIdx);
+            btn.setAttribute('data-col', cIdx);
+            btn.setAttribute('data-val', keyVal);
+
+            btn.onclick = () => handleOskKeyPress(keyVal);
+
+            rowDiv.appendChild(btn);
+            rowKeyEls.push(btn);
+          });
+
+          oskGrid.appendChild(rowDiv);
+          oskKeyElements.push(rowKeyEls);
+        });
+      }
+
+      function handleOskKeyPress(keyVal) {
+        if (keyVal === 'CAPS') {
+          state.oskCaps = !state.oskCaps;
+          renderOsk();
+          focusOskKey(state.oskRow, state.oskCol);
+          return;
+        }
+        if (keyVal === 'SPACE') {
+          appendOskChar(' ');
+          return;
+        }
+        if (keyVal === 'BACK') {
+          deleteOskChar();
+          return;
+        }
+        if (keyVal === 'CLEAR') {
+          clearOskText();
+          return;
+        }
+        if (keyVal === 'DONE') {
+          closeOsk();
+          return;
+        }
+
+        const char = (state.oskCaps && /[a-z]/i.test(keyVal)) ? keyVal.toUpperCase() : keyVal;
+        appendOskChar(char);
+      }
+
+      function appendOskChar(char) {
+        if (!state.oskTargetInput) return;
+        state.oskTargetInput.value += char;
+        updateOskPreview();
+      }
+
+      function deleteOskChar() {
+        if (!state.oskTargetInput) return;
+        state.oskTargetInput.value = state.oskTargetInput.value.slice(0, -1);
+        updateOskPreview();
+      }
+
+      function clearOskText() {
+        if (!state.oskTargetInput) return;
+        state.oskTargetInput.value = '';
+        updateOskPreview();
+      }
+
+      function updateOskPreview() {
+        if (!state.oskTargetInput) return;
+        const val = state.oskTargetInput.value;
+        if (state.oskTargetInput.type === 'password' && btnTogglePwdVis.textContent.includes('Tampilkan')) {
+          oskPreviewText.textContent = '•'.repeat(val.length);
+        } else {
+          oskPreviewText.textContent = val;
+        }
+      }
+
+      function openOsk(inputEl) {
+        state.oskTargetInput = inputEl;
+        updateOskPreview();
+        renderOsk();
+        oskModal.classList.add('active');
+        state.navMode = 'osk';
+        state.oskRow = 1; // start on 'e' or row 1
+        state.oskCol = 2;
+        focusOskKey(state.oskRow, state.oskCol);
+      }
+
+      function closeOsk() {
+        oskModal.classList.remove('active');
+        state.navMode = 'content';
+        if (state.oskTargetInput) {
+          state.oskTargetInput.focus();
+        }
+      }
+
+      function focusOskKey(r, c) {
+        if (oskKeyElements[r] && oskKeyElements[r][c]) {
+          state.oskRow = r;
+          state.oskCol = c;
+          oskKeyElements[r][c].focus();
+        }
+      }
+
+      function navigateOsk(up, down, left, right) {
+        let r = state.oskRow;
+        let c = state.oskCol;
+
+        if (up && r > 0) r--;
+        if (down && r < oskKeyElements.length - 1) r++;
+        if (left && c > 0) c--;
+        if (right && c < oskKeyElements[r].length - 1) c++;
+
+        // Row length clamping
+        c = Math.min(c, oskKeyElements[r].length - 1);
+        focusOskKey(r, c);
+      }
+
+      btnOpenOsk.onclick = () => openOsk(wifiPasswordInput);
+      btnOskClearText.onclick = clearOskText;
+
+      btnTogglePwdVis.onclick = () => {
+        if (wifiPasswordInput.type === 'password') {
+          wifiPasswordInput.type = 'text';
+          btnTogglePwdVis.textContent = '🙈 Sembunyikan';
+        } else {
+          wifiPasswordInput.type = 'password';
+          btnTogglePwdVis.textContent = '👁 Tampilkan';
+        }
+        updateOskPreview();
+      };
+
+      // ==========================================
+      // CONFIRMATION MODAL HELPER
+      // ==========================================
+      function showConfirmModal(title, msg, onConfirm) {
+        confirmTitle.textContent = title;
+        confirmMessage.textContent = msg;
+        state.modalCallback = onConfirm;
+        confirmModal.classList.add('active');
+        state.navMode = 'modal';
+        btnModalCancel.focus();
+      }
+
+      function closeConfirmModal(confirmed) {
+        confirmModal.classList.remove('active');
+        state.navMode = 'content';
+        if (confirmed && typeof state.modalCallback === 'function') {
+          state.modalCallback();
+        }
+        state.modalCallback = null;
+        if (state.lastContentTarget) state.lastContentTarget.focus();
+      }
+
+      btnModalCancel.onclick = () => closeConfirmModal(false);
+      btnModalOk.onclick = () => closeConfirmModal(true);
+
+      // ==========================================
+      // BACKEND API INTEGRATIONS
+      // ==========================================
+
+      // 1. Fetch Overall Telemetry (/api/status & /api/hdmi/network/status)
+      async function fetchTelemetry() {
+        try {
+          const [netRes, sysRes] = await Promise.all([
+            fetch('/api/hdmi/network/status').then(r => r.json()).catch(() => null),
+            fetch('/api/status').then(r => r.json()).catch(() => null)
+          ]);
+
+          if (netRes && netRes.ethernet) {
+            const eth = netRes.ethernet;
+            const wifi = netRes.wifi;
+
+            // Header IP & Link
+            const activeIp = eth.ip || wifi.ip || null;
+            if (activeIp) {
+              topStatusDot.className = 'status-dot online';
+              topIpVal.textContent = activeIp;
+            } else {
+              topStatusDot.className = 'status-dot offline';
+              topIpVal.textContent = 'Offline';
+            }
+
+            // Ethernet Panel info
+            ethCarrierBadge.className = eth.carrier ? 'badge badge-success' : 'badge';
+            ethCarrierBadge.textContent = eth.carrier ? 'Kabel Terpasang' : 'Kabel Terlepas';
+            ethStatusVal.textContent = eth.carrier ? `UP (${eth.speed || '100Mb/s'})` : 'DOWN (Terputus)';
+            ethCurIpVal.textContent = eth.ip ? `${eth.ip}/${eth.prefix || 24}` : 'Tidak Ada IP';
+            ethSpeedVal.textContent = `${eth.speed || '100Mb/s'} (${eth.duplex || 'Full'})`;
+            ethMacVal.textContent = eth.mac || '--';
+            ethCurGwVal.textContent = (netRes.system && netRes.system.default_gateway) || '--';
+            ethCurDnsVal.textContent = (netRes.system && (netRes.system.dns_servers || []).join(', ')) || '--';
+
+            // Wi-Fi Current
+            if (wifi.ssid) {
+              wifiCurrentSsid.textContent = `${wifi.ssid} (${wifi.band || '2.4G'})`;
+              wifiCurrentIp.textContent = `IP: ${wifi.ip || 'Memperoleh IP...'}`;
+            } else {
+              wifiCurrentSsid.textContent = 'Tidak terhubung';
+              wifiCurrentIp.textContent = 'IP: Offline';
+            }
+
+            // Radio status
+            state.isWifiRadioOn = Boolean(wifi.radio_enabled);
+            btnWifiRadio.innerHTML = state.isWifiRadioOn ? '<span>📻</span> Radio: ON' : '<span>📻</span> Radio: OFF';
+            btnWifiRadio.className = state.isWifiRadioOn ? 'btn btn-sm tv-nav' : 'btn btn-sm btn-danger tv-nav';
+          }
+
+          if (sysRes && sysRes.system) {
+            topTempVal.textContent = `${Math.round(sysRes.system.cpu_temp || 45)}°C`;
+            sysLoadVal.textContent = (sysRes.system.load || []).join(', ');
+            sysRamVal.textContent = sysRes.system.ram ? `${sysRes.system.ram.used || 0} MB / ${sysRes.system.ram.total || 0} MB` : '--';
+            sysUptimeVal.textContent = sysRes.system.uptime ? `${sysRes.system.uptime}` : '--';
+
+            const cupsOnline = sysRes.services && sysRes.services.cups;
+            topCupsVal.textContent = cupsOnline ? 'Online' : 'Offline';
+            cupsStatusVal.innerHTML = cupsOnline
+              ? '<span class="badge badge-success">Running (Aktif)</span>'
+              : '<span class="badge" style="background: var(--danger); color: #fff;">Inactive (Mati)</span>';
+
+            const avahiOnline = sysRes.services && sysRes.services.avahi;
+            avahiStatusVal.innerHTML = avahiOnline
+              ? '<span class="badge badge-success">Running (Aktif)</span>'
+              : '<span class="badge" style="background: var(--warning); color: #fff;">Inactive</span>';
+
+            const pConn = sysRes.printer && sysRes.printer.connected;
+            const pName = sysRes.printer && sysRes.printer.raw_display_name;
+            printerStatusVal.textContent = pConn ? (pName || 'Terdeteksi') : 'Belum Ada Printer USB';
+          }
+        } catch (err) {
+          console.warn('[Telemetry Error]', err);
+        }
+      }
+
+      // 2. Wi-Fi Scan & Connect
+      async function scanWifi() {
+        btnWifiScan.disabled = true;
+        btnWifiScan.innerHTML = '<span>⏳</span> Memindai...';
+        wifiItemsList.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">Sedang memindai gelombang Wi-Fi...</div>';
+
+        try {
+          const res = await fetch('/api/hdmi/network/wifi/scan').then(r => r.json());
+          if (res.success && Array.isArray(res.networks)) {
+            state.wifiNetworks = res.networks;
+            wifiCount.textContent = `(${res.networks.length} ditemukan)`;
+            renderWifiList();
+          } else {
+            wifiItemsList.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--danger); font-size: 13px;">Gagal memindai jaringan. Pastikan radio Wi-Fi aktif.</div>';
+          }
+        } catch (err) {
+          wifiItemsList.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--danger); font-size: 13px;">Error: ${err.message}</div>`;
+        } finally {
+          btnWifiScan.disabled = false;
+          btnWifiScan.innerHTML = '<span>🔄</span> Scan Ulang';
+        }
+      }
+
+      function renderWifiList() {
+        wifiItemsList.innerHTML = '';
+        if (state.wifiNetworks.length === 0) {
+          wifiItemsList.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-dim); font-size: 13px;">Tidak ada jaringan Wi-Fi terdeteksi.</div>';
+          return;
+        }
+
+        state.wifiNetworks.forEach((net, idx) => {
+          const item = document.createElement('div');
+          item.className = 'wifi-item tv-nav';
+          item.tabIndex = 0;
+          item.setAttribute('data-ssid', net.ssid);
+
+          const isSel = state.selectedWifi && state.selectedWifi.ssid === net.ssid;
+          if (isSel) item.classList.add('selected');
+
+          // Signal bars or percentage
+          const sig = net.signal_percent || 0;
+          let sigIcon = '📶';
+          if (sig < 30) sigIcon = '▂';
+          else if (sig < 60) sigIcon = '▃';
+          else if (sig < 85) sigIcon = '▄';
+          else sigIcon = '▆';
+
+          item.innerHTML = `
+            <div class="wifi-item-left">
+              <span style="font-size: 16px;">${sigIcon}</span>
+              <span class="wifi-ssid">${net.ssid}</span>
+            </div>
+            <div class="wifi-item-right">
+              <span class="badge">${net.badge || 'WPA2'}</span>
+              <span style="font-size: 12px; color: var(--text-muted); font-weight: 700;">${sig}%</span>
+            </div>
+          `;
+
+          item.onclick = () => selectWifiNetwork(net, item);
+
+          wifiItemsList.appendChild(item);
+        });
+      }
+
+      function selectWifiNetwork(net, el) {
+        state.selectedWifi = net;
+        Array.from(wifiItemsList.querySelectorAll('.wifi-item')).forEach(i => i.classList.remove('selected'));
+        if (el) el.classList.add('selected');
+
+        wifiSsidInput.value = net.ssid;
+        wifiSelectedSec.textContent = net.badge || 'WPA2';
+
+        if (!net.requires_password) {
+          document.getElementById('wifi-pwd-group').style.display = 'none';
+          btnOpenOsk.style.display = 'none';
+        } else {
+          document.getElementById('wifi-pwd-group').style.display = 'block';
+          btnOpenOsk.style.display = 'block';
+        }
+
+        showWifiAlert('', 'info');
+      }
+
+      async function connectWifi() {
+        if (!state.selectedWifi && !wifiSsidInput.value.trim()) {
+          showWifiAlert('Pilih jaringan Wi-Fi terlebih dahulu.', 'danger');
+          return;
+        }
+
+        const ssid = wifiSsidInput.value.trim();
+        const password = wifiPasswordInput.value;
+
+        btnWifiConnect.disabled = true;
+        btnWifiConnect.innerHTML = '<span>⏳</span> Menyambungkan ke ' + ssid + '...';
+        showWifiAlert(`Menghubungkan ke "${ssid}"... Tunggu hingga 10 detik.`, 'info');
+
+        try {
+          const res = await fetch('/api/hdmi/network/wifi/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ssid,
+              password,
+              auth_method: state.selectedWifi ? state.selectedWifi.security_type.toLowerCase() : 'wpa2'
+            })
+          }).then(r => r.json());
+
+          if (res.success) {
+            showWifiAlert(`✓ Berhasil terhubung ke "${ssid}"!`, 'success');
+            setTimeout(fetchTelemetry, 1500);
+          } else {
+            showWifiAlert(res.message || 'Gagal terhubung ke Wi-Fi. Periksa sandi.', 'danger');
+          }
+        } catch (err) {
+          showWifiAlert(`Kesalahan: ${err.message}`, 'danger');
+        } finally {
+          btnWifiConnect.disabled = false;
+          btnWifiConnect.innerHTML = '⚡ Hubungkan Sekarang';
+        }
+      }
+
+      async function toggleWifiRadio() {
+        const nextState = !state.isWifiRadioOn;
+        btnWifiRadio.disabled = true;
+        try {
+          const res = await fetch('/api/hdmi/network/wifi/radio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: nextState })
+          }).then(r => r.json());
+
+          if (res.success) {
+            state.isWifiRadioOn = nextState;
+            btnWifiRadio.innerHTML = nextState ? '<span>📻</span> Radio: ON' : '<span>📻</span> Radio: OFF';
+            btnWifiRadio.className = nextState ? 'btn btn-sm tv-nav' : 'btn btn-sm btn-danger tv-nav';
+            if (nextState) scanWifi();
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          btnWifiRadio.disabled = false;
+        }
+      }
+
+      function showWifiAlert(msg, type) {
+        if (!msg) {
+          wifiAlert.style.display = 'none';
+          return;
+        }
+        wifiAlert.className = `alert alert-${type} active`;
+        wifiAlert.textContent = msg;
+      }
+
+      btnWifiScan.onclick = scanWifi;
+      btnWifiRadio.onclick = toggleWifiRadio;
+      btnWifiConnect.onclick = connectWifi;
+
+      // 3. Ethernet Setup
+      function setEthernetMode(mode) {
+        state.ethernetMode = mode;
+        if (mode === 'dhcp') {
+          btnEthModeDhcp.className = 'btn tv-nav btn-primary';
+          btnEthModeStatic.className = 'btn tv-nav';
+          ethStaticForm.style.display = 'none';
+        } else {
+          btnEthModeDhcp.className = 'btn tv-nav';
+          btnEthModeStatic.className = 'btn tv-nav btn-primary';
+          ethStaticForm.style.display = 'block';
+        }
+      }
+
+      btnEthModeDhcp.onclick = () => setEthernetMode('dhcp');
+      btnEthModeStatic.onclick = () => setEthernetMode('static');
+
+      async function applyEthernet() {
+        const payload = { mode: state.ethernetMode };
+        if (state.ethernetMode === 'static') {
+          payload.ip = ethIpInput.value.trim();
+          payload.prefix = parseInt(ethPrefixInput.value.trim(), 10) || 24;
+          payload.gateway = ethGwInput.value.trim();
+          payload.dns1 = ethDns1Input.value.trim() || '1.1.1.1';
+          payload.dns2 = ethDns2Input.value.trim() || '8.8.8.8';
+
+          if (!payload.ip || !payload.gateway) {
+            showEthAlert('Alamat IP dan Default Gateway wajib diisi.', 'danger');
+            return;
+          }
+        }
+
+        btnEthApply.disabled = true;
+        btnEthApply.innerHTML = '<span>⏳</span> Menerapkan Konfigurasi...';
+        showEthAlert('Menerapkan netplan ke eth0...', 'info');
+
+        try {
+          const res = await fetch('/api/hdmi/network/ethernet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).then(r => r.json());
+
+          if (res.success) {
+            showEthAlert(res.message || 'Konfigurasi Ethernet berhasil diterapkan!', 'success');
+            setTimeout(fetchTelemetry, 1500);
+          } else {
+            showEthAlert(res.message || 'Gagal menerapkan konfigurasi Ethernet.', 'danger');
+          }
+        } catch (err) {
+          showEthAlert(`Kesalahan: ${err.message}`, 'danger');
+        } finally {
+          btnEthApply.disabled = false;
+          btnEthApply.innerHTML = '💾 Terapkan Pengaturan Ethernet';
+        }
+      }
+
+      function showEthAlert(msg, type) {
+        if (!msg) {
+          ethAlert.style.display = 'none';
+          return;
+        }
+        ethAlert.className = `alert alert-${type} active`;
+        ethAlert.textContent = msg;
+      }
+
+      btnEthApply.onclick = applyEthernet;
+      btnEthReset.onclick = () => {
+        setEthernetMode('dhcp');
+        applyEthernet();
+      };
+      btnEthRefresh.onclick = fetchTelemetry;
+
+      // 4. Status, Diagnostics & Service Restart
+      async function restartService(serviceName) {
+        const btn = serviceName === 'cups' ? btnRestartCups : btnRestartAvahi;
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> Me-restart...';
+
+        try {
+          const res = await fetch('/api/service/restart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ service: serviceName })
+          }).then(r => r.json());
+
+          if (res.success) {
+            alert(`Layanan ${serviceName.toUpperCase()} berhasil direstart!`);
+          } else {
+            alert(`Gagal me-restart ${serviceName}: ${res.message}`);
+          }
+        } catch (err) {
+          alert(`Error: ${err.message}`);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = `🔄 Restart ${serviceName === 'cups' ? 'CUPS' : 'Avahi'}`;
+          fetchTelemetry();
+        }
+      }
+
+      btnRestartCups.onclick = () => restartService('cups');
+      btnRestartAvahi.onclick = () => restartService('avahi-daemon');
+
+      async function runPingTest(target, resultEl, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> Ping...';
+        resultEl.textContent = `Menghubungi ${target}...`;
+        resultEl.style.color = 'var(--focus-ring)';
+
+        try {
+          const res = await fetch('/api/hdmi/network/diagnostics/ping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target })
+          }).then(r => r.json());
+
+          if (res.success && res.packet_loss_percent < 100) {
+            resultEl.textContent = `✓ OK (${res.latency_avg || 0} ms, loss: ${res.packet_loss_percent}%)`;
+            resultEl.style.color = 'var(--success)';
+          } else {
+            resultEl.textContent = `✕ Gagal / Timeout (Loss: ${res.packet_loss_percent || 100}%)`;
+            resultEl.style.color = 'var(--danger)';
+          }
+        } catch (err) {
+          resultEl.textContent = `✕ Error: ${err.message}`;
+          resultEl.style.color = 'var(--danger)';
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '⚡ Uji Ping';
+        }
+      }
+
+      btnPingGw.onclick = () => {
+        const gw = ethCurGwVal.textContent !== '--' ? ethCurGwVal.textContent : '192.168.1.1';
+        runPingTest(gw, pingGwResult, btnPingGw);
+      };
+
+      btnPingInet.onclick = () => {
+        runPingTest('1.1.1.1', pingInetResult, btnPingInet);
+      };
+
+      btnTestDns.onclick = async () => {
+        btnTestDns.disabled = true;
+        btnTestDns.innerHTML = '<span>⏳</span> Uji...';
+        dnsResult.textContent = 'Mencari google.com...';
+        dnsResult.style.color = 'var(--focus-ring)';
+
+        try {
+          const res = await fetch('/api/hdmi/network/diagnostics/dns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host: 'google.com' })
+          }).then(r => r.json());
+
+          if (res.success && res.addresses && res.addresses.length > 0) {
+            dnsResult.textContent = `✓ Selesai (${res.addresses[0]}) dalam ${res.duration_ms}ms`;
+            dnsResult.style.color = 'var(--success)';
+          } else {
+            dnsResult.textContent = '✕ Gagal resolve domain DNS.';
+            dnsResult.style.color = 'var(--danger)';
+          }
+        } catch (err) {
+          dnsResult.textContent = `✕ Error: ${err.message}`;
+          dnsResult.style.color = 'var(--danger)';
+        } finally {
+          btnTestDns.disabled = false;
+          btnTestDns.innerHTML = '⚡ Uji DNS';
+        }
+      };
+
+      btnSystemReboot.onclick = () => {
+        showConfirmModal('Reboot Set-Top Box?', 'Sistem MantaPrint Hub akan dimuat ulang. Layanan cetak akan berhenti sejenak.', async () => {
+          try {
+            await fetch('/api/hdmi/network/system/reboot', { method: 'POST' });
+            alert('Sistem sedang memuat ulang (Rebooting)...');
+          } catch (err) {
+            alert('Gagal memicu reboot: ' + err.message);
+          }
+        });
+      };
+
+      btnFactoryReset.onclick = () => {
+        showConfirmModal('Reset Konfigurasi Jaringan Pabrik?', 'Seluruh konfigurasi IP Statis dan Wi-Fi akan dihapus dan kembali ke DHCP default.', async () => {
+          try {
+            const res = await fetch('/api/hdmi/network/reset', { method: 'POST' }).then(r => r.json());
+            alert(res.message || 'Jaringan direset ke default.');
+            fetchTelemetry();
+          } catch (err) {
+            alert('Gagal reset: ' + err.message);
+          }
+        });
+      };
+
+      // 5. Remote IR Wizard Integration
+      btnRemoteStart.onclick = async () => {
+        btnRemoteStart.disabled = true;
+        try {
+          const res = await fetch('/api/hdmi/network/remote/wizard/start', { method: 'POST' }).then(r => r.json());
+          state.remoteWizardActive = true;
+          btnRemoteUndo.disabled = false;
+          btnRemoteSkip.disabled = false;
+          btnRemoteCancel.disabled = false;
+          updateRemoteWizardUI(res);
+          startRemotePolling();
+        } catch (err) {
+          alert('Gagal memulai wizard: ' + err.message);
+          btnRemoteStart.disabled = false;
+        }
+      };
+
+      btnRemoteUndo.onclick = async () => {
+        const res = await fetch('/api/hdmi/network/remote/wizard/undo', { method: 'POST' }).then(r => r.json());
+        updateRemoteWizardUI(res);
+      };
+
+      btnRemoteSkip.onclick = async () => {
+        const res = await fetch('/api/hdmi/network/remote/wizard/skip', { method: 'POST' }).then(r => r.json());
+        updateRemoteWizardUI(res);
+      };
+
+      btnRemoteCancel.onclick = async () => {
+        await fetch('/api/hdmi/network/remote/wizard/cancel', { method: 'POST' });
+        stopRemotePolling();
+        state.remoteWizardActive = false;
+        btnRemoteStart.disabled = false;
+        btnRemoteUndo.disabled = true;
+        btnRemoteSkip.disabled = true;
+        btnRemoteCancel.disabled = true;
+        remoteStepBadge.textContent = 'Dibatalkan';
+        remoteWizardInstruction.textContent = 'Kalibrasi remote dibatalkan';
+        remoteTargetBtn.textContent = 'Tekan "Mulai Wizard"';
+        remoteScancodeDisplay.textContent = 'Scancode: --';
+      };
+
+      function updateRemoteWizardUI(status) {
+        if (!status) return;
+        if (status.completed) {
+          stopRemotePolling();
+          state.remoteWizardActive = false;
+          btnRemoteStart.disabled = false;
+          btnRemoteUndo.disabled = true;
+          btnRemoteSkip.disabled = true;
+          btnRemoteCancel.disabled = true;
+          remoteStepBadge.textContent = 'Selesai!';
+          remoteStepBadge.className = 'badge badge-success';
+          remoteWizardInstruction.textContent = 'Kalibrasi remote selesai dan disimpan!';
+          remoteTargetBtn.textContent = '✓ Sukses!';
+          return;
+        }
+
+        if (status.currentStep) {
+          remoteStepBadge.textContent = `Langkah ${status.currentIndex + 1} dari ${status.totalSteps}`;
+          remoteWizardInstruction.textContent = `Silakan tekan tombol: ${status.currentStep.desc}`;
+          remoteTargetBtn.textContent = `${status.currentStep.icon} ${status.currentStep.name}`;
+          if (status.lastDetected) {
+            remoteScancodeDisplay.textContent = `Terdeteksi: ${status.lastDetected.scancode} (${status.lastDetected.name})`;
+          }
+        }
+      }
+
+      function startRemotePolling() {
+        stopRemotePolling();
+        state.remotePollTimer = setInterval(async () => {
+          if (!state.remoteWizardActive) return;
+          try {
+            const status = await fetch('/api/hdmi/network/remote/wizard/status').then(r => r.json());
+            updateRemoteWizardUI(status);
+          } catch {}
+        }, 500);
+      }
+
+      function stopRemotePolling() {
+        if (state.remotePollTimer) {
+          clearInterval(state.remotePollTimer);
+          state.remotePollTimer = null;
+        }
+      }
+
+      // ==========================================
+      // INITIALIZATION
+      // ==========================================
+      function init() {
+        // Set initial sidebar focus
+        focusSidebarTab(0);
+        // Initial telemetry
+        fetchTelemetry();
+        // Initial scan
+        scanWifi();
+        // Gentle periodic background refresh (every 15 seconds)
+        setInterval(fetchTelemetry, 15000);
+      }
+
+      init();
+
+    })();
+  </script>
+</body>
+</html>

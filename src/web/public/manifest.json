@@ -1,0 +1,78 @@
+{
+  "name": "MantaPrint WebScan Studio (Prototype)",
+  "short_name": "MantaPrint Proto",
+  "description": "PROTOTYPE - not for production or sensitive data. Studio Pemindaian Dokumen & ID Card Modern Nirkabel untuk MantaPrint Hub",
+  "id": "/scan",
+  "start_url": "/scan",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070a11",
+  "theme_color": "#070a11",
+  "categories": [
+    "productivity",
+    "utilities",
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Pindai Dokumen Baru",
+      "short_name": "Pindai",
+      "url": "/scan",
+      "icons": [
+        {
+          "src": "/icon-maskable-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Cetak Nirkabel",
+      "short_name": "Cetak",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icon-maskable-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Konsol Admin",
+      "short_name": "Admin",
+      "url": "/admin",
+      "icons": [
+        {
+          "src": "/icon-maskable-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

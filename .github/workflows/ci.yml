@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  frontend-tests:
+    name: Frontend Tests & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies in frontend/
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run unit tests (documentProcessor)
+        working-directory: frontend
+        run: npm test
+
+      - name: Verify frontend build
+        working-directory: frontend
+        run: npm run build
+
+  python-syntax-check:
+    name: Python Syntax Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Validate Python script syntax
+        run: python -m py_compile src/core/*.py src/web/*.py
+
+  installer-lint:
+    name: Shell Script & Installer Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate syntax of installer and bash scripts
+        run: |
+          bash -n install.sh
+          bash -n scripts/*.sh
+          bash -n system/bin/*

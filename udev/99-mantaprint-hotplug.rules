@@ -1,0 +1,17 @@
+# MantaPrint Zero-Delay USB Printer & Scanner Hotplug Detection Rules
+# Triggers instantaneous queue provisioning and Avahi mDNS publication
+
+# USB Printer interface class 0x07 (Printer), subclass 0x01 (Printer)
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:0701*:*", \
+    RUN+="/usr/bin/systemctl --no-block restart mantaprint-hotplug.service"
+
+ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:0701*:*", \
+    RUN+="/usr/bin/systemctl --no-block restart mantaprint-hotplug.service"
+
+# USB Scanner interface class 0x06 (Still Image) or vendor-specific scanner interfaces (0xff)
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:0601*:*|*:ff????:*", \
+    RUN+="/usr/bin/systemctl --no-block restart mantaprint-hotplug.service"
+
+ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:0601*:*|*:ff????:*", \
+    RUN+="/usr/bin/systemctl --no-block restart mantaprint-hotplug.service"
+

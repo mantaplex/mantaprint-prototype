@@ -1,0 +1,4 @@
+# /etc/udev/rules.d/99-hdmi-hotplug.rules
+# Only trigger on actual physical HDMI Hotplug Detect (HPD) hardware interrupts (HOTPLUG=1)
+# Do NOT trigger on internal DRM software state changes (which lack HOTPLUG=1)
+ACTION=="change", SUBSYSTEM=="drm", ENV{HOTPLUG}=="1", RUN+="/usr/local/bin/mantaprint-hdmi-trigger"

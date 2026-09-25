@@ -69,6 +69,16 @@ function parseChangelog() {
   return sections;
 }
 
+function currentVersionTag() {
+  try {
+    const { version } = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'version.json'), 'utf8'));
+    return version ? `v${String(version).replace(/^v/, '')}` : null;
+  } catch (err) {
+    console.error('[ERROR] Could not read version.json:', err.message);
+    return null;
+  }
+}
+
 function listGitTags() {
   try {
     const out = execSync('git tag --list "v*" --sort=v:refname', { cwd: ROOT_DIR, encoding: 'utf8' });
@@ -141,6 +151,24 @@ async function main() {
   // Release every version that has both a pushed git tag and a CHANGELOG section, oldest first.
   const tags = listGitTags();
   const releaseOrder = tags.filter(tag => changelogReleases[tag]);
+
+  // Auto-tagging: on a push to main, the version in version.json is released even when its tag has
+  // not been pushed. Creating the release with target_commitish makes GitHub create the tag on
+  // that commit, so a new version only needs a version bump + CHANGELOG section on main.
+  const autoTag = currentVersionTag();
+  const onMain = process.env.GITHUB_REF === 'refs/heads/main' && Boolean(process.env.GITHUB_SHA);
+  const autoTargets = {};
+  if (autoTag && !tags.includes(autoTag)) {
+    if (!onMain) {
+      console.log(`[i] ${autoTag} (version.json) has no tag yet; it is created automatically on the next push to main.`);
+    } else if (!changelogReleases[autoTag]) {
+      console.warn(`[WARN] ${autoTag} (version.json) has no CHANGELOG.md section; not creating the tag or release.`);
+    } else {
+      releaseOrder.push(autoTag);
+      autoTargets[autoTag] = process.env.GITHUB_SHA;
+      console.log(`[+] ${autoTag} will be tagged on ${process.env.GITHUB_SHA} and released.`);
+    }
+  }
   const latestTag = releaseOrder[releaseOrder.length - 1];
 
   const pendingReleases = releaseOrder.filter(tag => !existingReleases.includes(tag));
@@ -176,6 +204,7 @@ async function main() {
 
     const payload = {
       tag_name: tag,
+      ...(autoTargets[tag] ? { target_commitish: autoTargets[tag] } : {}),
       name: title,
       body: body,
       draft: false,

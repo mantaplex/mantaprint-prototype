@@ -26,7 +26,7 @@ security weaknesses documented. There are no functional changes to printing or s
 ### Changed
 - **New repository:** `mantaplex/mantaprint-prototype`. The hub updater, MantaPool updater, default `repo_url`, package metadata and documentation links point to it.
 - **All components are versioned 0.3.0** (Hub, web, frontend and MantaPool) on the new `prototype` release channel.
-- **GitHub Releases are always pre-releases** and every release body starts with the prototype warning. `scripts/publish-releases.mjs` now derives the releases to publish from pushed git tags that have a CHANGELOG section, so a new version only needs a CHANGELOG entry and a tag.
+- **GitHub Releases are always pre-releases** and every release body starts with the prototype warning. `scripts/publish-releases.mjs` now derives the releases to publish from pushed git tags that have a CHANGELOG section, and on a push to `main` it creates the missing tag for the version in `version.json` itself, so a new version only needs a version bump and a CHANGELOG entry on `main`.
 - README: prototype warning at the top, install instructions describe the risk prompt, MantaPool port documented as HTTP without TLS, and "Zero-Trace" clarified as covering storage on the hub only.
 
 ### Known weaknesses (documented, not fixed in this release)

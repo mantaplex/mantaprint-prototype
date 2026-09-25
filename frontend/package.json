@@ -1,0 +1,33 @@
+{
+  "name": "mantaprint-dashboard",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/copy-ocr-assets.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-ocr-assets.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test src/utils/*.test.js src/scan/engine/*.test.js"
+  },
+  "dependencies": {
+    "docx": "^9.7.2",
+    "lucide-react": "^0.475.0",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tesseract.js": "^7.0.0",
+    "wasm-feature-detect": "^1.9.0"
+  },
+  "devDependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/ind": "^1.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.1.0"
+  }
+}

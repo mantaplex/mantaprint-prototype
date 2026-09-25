@@ -1,0 +1,11 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service-group.dtd">
+<service-group>
+  <name replace-wildcards="yes">MantaPrint Universal Print Hub</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>80</port>
+    <txt-record>path=/</txt-record>
+    <txt-record>note=MantaPrint Realtime Web Dashboard</txt-record>
+  </service>
+</service-group>

@@ -1,0 +1,8 @@
+{
+  "name": "mantapool-console",
+  "version": "0.3.0",
+  "release_channel": "prototype",
+  "build_date": "2026-09-25T12:00:00Z",
+  "git_repo": "https://github.com/mantaplex/mantaprint-prototype",
+  "min_node_version": ">=20.0.0"
+}

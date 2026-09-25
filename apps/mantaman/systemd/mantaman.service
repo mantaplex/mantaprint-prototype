@@ -1,0 +1,46 @@
+[Unit]
+Description=MantaPool Console - Centralized Fleet Orchestration & Autonomous Adoption Console for MantaPrint Hubs
+Documentation=https://github.com/mantaplex/mantaprint-prototype/tree/main/apps/mantaman
+After=network.target
+
+[Service]
+Type=simple
+User=mantaman
+Group=mantaman
+WorkingDirectory=/opt/mantaman
+ExecStart=/usr/bin/node /opt/mantaman/server/server.mjs
+Restart=always
+RestartSec=5s
+
+# Security Sandboxing
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mantaman /opt/mantaman
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+NoNewPrivileges=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Resource Ceilings
+LimitNOFILE=65536
+MemoryHigh=512M
+MemoryMax=1024M
+
+# Environment
+Environment=NODE_ENV=production
+Environment=MANTAMAN_PORT=8443
+Environment=MANTAMAN_HOST=0.0.0.0
+Environment=MANTAMAN_DB_PATH=/var/lib/mantaman/mantaman.sqlite
+Environment=MANTAMAN_BACKUP_DIR=/var/lib/mantaman/backups
+
+[Install]
+WantedBy=multi-user.target

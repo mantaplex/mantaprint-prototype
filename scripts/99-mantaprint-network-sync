@@ -1,0 +1,10 @@
+#!/bin/sh
+# MantaPrint Dynamic Network Interface Sync Hook
+# Invoked whenever an interface acquires an IP address
+if [ "$METHOD" = "loopback" ] || [ "$IFACE" = "lo" ]; then
+    exit 0
+fi
+
+if [ -x /usr/bin/python3 ] && [ -f /opt/mantaprint/core/printer_manager.py ]; then
+    PYTHONPATH=/opt/mantaprint/core:/opt/mantaprint /usr/bin/python3 -c "import printer_manager; printer_manager.sync_printers()" >/dev/null 2>&1 &
+fi

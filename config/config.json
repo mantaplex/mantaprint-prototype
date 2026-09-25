@@ -1,0 +1,27 @@
+{
+  "language": "en",
+  "hostname": "mantaprint",
+  "timezone": "Asia/Jakarta",
+  "ntp": {
+    "enabled": true,
+    "servers": [
+      "pool.ntp.org",
+      "time.google.com",
+      "id.pool.ntp.org"
+    ]
+  },
+  "admin": {
+    "username": "mantaprint",
+    "password": "mantapgan"
+  },
+  "updates": {
+    "channel": "prototype",
+    "repo_url": "https://github.com/mantaplex/mantaprint-prototype",
+    "last_checked": null,
+    "update_available": false
+  },
+  "scanner": {
+    "portal_enabled": true,
+    "remote_pwa_api_enabled": true
+  }
+}

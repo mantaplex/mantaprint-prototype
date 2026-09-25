@@ -1,0 +1,454 @@
+{
+  "timestamp": 1789748010.2768455,
+  "summary": {
+    "Task_1_Input_Robustness": "PASS",
+    "Task_2_Concurrency": "PASS",
+    "Task_3_Event_Burst": "PASS",
+    "Task_4_Driver_Matrix": "PASS",
+    "Task_5_Telemetry": "PASS",
+    "Overall_Verdict": "PASS"
+  },
+  "t1_details": [
+    {
+      "test": "Non-existent printer queue",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Printer queue 'non_existent_queue_xyz' does not exist."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Empty JSON payload",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Field 'printer' is required."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Shell injection characters in printer name",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Invalid printer queue name. Only alphanumeric, dashes, and underscores allowed."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Directory traversal characters",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Invalid printer queue name. Only alphanumeric, dashes, and underscores allowed."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Special symbols in printer name",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Invalid printer queue name. Only alphanumeric, dashes, and underscores allowed."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Integer type for printer parameter",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Field 'printer' must be a string."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Malformed JSON syntax in test-page",
+      "endpoint": "/api/printer/test-page",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Malformed JSON: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Unknown service name ('invalid')",
+      "endpoint": "/api/service/restart",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Layanan tidak dikenal: 'invalid'."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Command injection in service name",
+      "endpoint": "/api/service/restart",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Layanan tidak dikenal: 'cups; reboot'."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Missing service field in payload",
+      "endpoint": "/api/service/restart",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Field 'service' is required."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Unsupported service name ('apache2')",
+      "endpoint": "/api/service/restart",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Layanan tidak dikenal: 'apache2'."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Malformed raw text payload in service restart",
+      "endpoint": "/api/service/restart",
+      "status_code": 400,
+      "expected_status": 400,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Malformed JSON: Expecting value: line 1 column 1 (char 0)"
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Non-existent GET endpoint",
+      "endpoint": "/api/non_existent_endpoint",
+      "status_code": 404,
+      "expected_status": 404,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Endpoint not found."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "test": "Non-existent POST endpoint",
+      "endpoint": "/api/non_existent_endpoint",
+      "status_code": 404,
+      "expected_status": 404,
+      "is_json": true,
+      "response": {
+        "success": false,
+        "message": "Endpoint not found."
+      },
+      "verdict": "PASS"
+    }
+  ],
+  "t2_details": [
+    {
+      "endpoint": "GET /api/status",
+      "count": 50,
+      "wall_time_s": 2.65,
+      "avg_latency_ms": 2568.7,
+      "min_latency_ms": 2534.9,
+      "max_latency_ms": 2630.3,
+      "http_200_count": 50,
+      "valid_json_count": 50,
+      "errors": 0,
+      "verdict": "PASS"
+    },
+    {
+      "endpoint": "POST /api/scan",
+      "count": 50,
+      "wall_time_s": 2.4,
+      "avg_latency_ms": 2354.0,
+      "min_latency_ms": 2324.8,
+      "max_latency_ms": 2384.4,
+      "http_200_count": 50,
+      "valid_json_count": 50,
+      "errors": 0,
+      "verdict": "PASS"
+    },
+    {
+      "endpoint": "Interleaved 25x Status + 25x Scan",
+      "count": 50,
+      "wall_time_s": 2.57,
+      "avg_latency_ms": 2436.8,
+      "min_latency_ms": 102.2,
+      "max_latency_ms": 2547.6,
+      "http_200_count": 50,
+      "valid_json_count": 50,
+      "errors": 0,
+      "verdict": "PASS"
+    }
+  ],
+  "t3_details": {
+    "avahi_service_files_count": 1,
+    "cups_queue_intact": true,
+    "verdict": "PASS"
+  },
+  "t4_details": [
+    {
+      "vendor": "Canon",
+      "model": "G3030",
+      "category": "Inkjet (Canon G-series)",
+      "assigned_uri": "gutenprint.5.3://bjc-G3000-series/expert",
+      "desc": "Canon G3000 series - CUPS+Gutenprint v5.3.4 (Score: 100)",
+      "expected_needle": "bjc-G3000-series",
+      "passed": true
+    },
+    {
+      "vendor": "Canon",
+      "model": "G3010",
+      "category": "Inkjet (Canon G-series)",
+      "assigned_uri": "gutenprint.5.3://bjc-PIXMA-G3010/expert",
+      "desc": "Canon PIXMA G3010 - CUPS+Gutenprint v5.3.4 (Score: 125)",
+      "expected_needle": "bjc-PIXMA-G3010",
+      "passed": true
+    },
+    {
+      "vendor": "Canon",
+      "model": "G2000",
+      "category": "Inkjet (Canon G-series)",
+      "assigned_uri": "gutenprint.5.3://bjc-G2000-series/expert",
+      "desc": "Canon G2000 series - CUPS+Gutenprint v5.3.4 (Score: 125)",
+      "expected_needle": "bjc-G2000-series",
+      "passed": true
+    },
+    {
+      "vendor": "Canon",
+      "model": "LBP 2900",
+      "category": "CAPT Laser (Canon LBP)",
+      "assigned_uri": "/usr/share/cups/model/CanonLBP-2900-3000.ppd",
+      "desc": "Canon Inc LBP2900/LBP3000 r2c, 0.1.4 (Score: 135)",
+      "expected_needle": "CanonLBP-2900-3000",
+      "passed": true
+    },
+    {
+      "vendor": "Canon",
+      "model": "LBP 3000",
+      "category": "CAPT Laser (Canon LBP)",
+      "assigned_uri": "/usr/share/cups/model/CanonLBP-2900-3000.ppd",
+      "desc": "Canon Inc LBP2900/LBP3000 r2c, 0.1.4 (Score: 135)",
+      "expected_needle": "CanonLBP-2900-3000",
+      "passed": true
+    },
+    {
+      "vendor": "Canon",
+      "model": "LBP 6030",
+      "category": "CAPT Laser (Canon LBP)",
+      "assigned_uri": "/usr/share/cups/model/CanonLBP-6000-6018.ppd",
+      "desc": "Canon Inc LBP6000/LBP6018, 0.1.4 (Score: 110)",
+      "expected_needle": "CanonLBP-6000-6018",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "L3110",
+      "category": "EcoTank ESC/P-R",
+      "assigned_uri": "escpr:0/cups/model/epson-inkjet-printer-escpr/Epson-L3110_Series-epson-escpr-en.ppd",
+      "desc": "EPSON L3110 Series , Epson Inkjet Printer Driver (ESC/P-R) for Linux (Score: 130)",
+      "expected_needle": "Epson-L3110_Series",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "L3250",
+      "category": "EcoTank ESC/P-R",
+      "assigned_uri": "escpr:0/cups/model/epson-inkjet-printer-escpr/Epson-L3250_Series-epson-escpr-en.ppd",
+      "desc": "EPSON L3250 Series , Epson Inkjet Printer Driver (ESC/P-R) for Linux (Score: 130)",
+      "expected_needle": "Epson-L3250_Series",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "L120",
+      "category": "EcoTank ESC/P-R",
+      "assigned_uri": "gutenprint.5.3://escp2-l120/expert",
+      "desc": "Epson L120 - CUPS+Gutenprint v5.3.4 (Score: 125)",
+      "expected_needle": "escp2-l120",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "LX-300",
+      "category": "Dot Matrix (ESC/P 9-pin)",
+      "assigned_uri": "drv:///sample.drv/epson9.ppd",
+      "desc": "Generic ESC/P 9-pin Dot Matrix (sample.drv)",
+      "expected_needle": "epson9",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "LX-310",
+      "category": "Dot Matrix (ESC/P 9-pin)",
+      "assigned_uri": "drv:///sample.drv/epson9.ppd",
+      "desc": "Generic ESC/P 9-pin Dot Matrix (sample.drv)",
+      "expected_needle": "epson9",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "TM-T82",
+      "category": "Thermal POS Raw",
+      "assigned_uri": "raw",
+      "desc": "POS / Thermal Raw",
+      "expected_needle": "raw",
+      "passed": true
+    },
+    {
+      "vendor": "Epson",
+      "model": "TM-T82X",
+      "category": "Thermal POS Raw",
+      "assigned_uri": "raw",
+      "desc": "POS / Thermal Raw",
+      "expected_needle": "raw",
+      "passed": true
+    },
+    {
+      "vendor": "Brother",
+      "model": "HL-1200",
+      "category": "brlaser Laser",
+      "assigned_uri": "drv:///brlaser.drv/br1200.ppd",
+      "desc": "HL-1200 series (Score: 130)",
+      "expected_needle": "brlaser.drv/br1200",
+      "passed": true
+    },
+    {
+      "vendor": "Brother",
+      "model": "DCP-1510",
+      "category": "brlaser Laser",
+      "assigned_uri": "drv:///brlaser.drv/br1510.ppd",
+      "desc": "DCP-1510 series (Score: 130)",
+      "expected_needle": "brlaser.drv/br1510",
+      "passed": true
+    },
+    {
+      "vendor": "Brother",
+      "model": "DCP-1610W",
+      "category": "brlaser Laser",
+      "assigned_uri": "drv:///brlaser.drv/br1610.ppd",
+      "desc": "DCP-1610W series (Score: 130)",
+      "expected_needle": "brlaser.drv/br1610",
+      "passed": true
+    },
+    {
+      "vendor": "HP",
+      "model": "LaserJet P1102",
+      "category": "foo2zjs / PCL Laser",
+      "assigned_uri": "foo2zjs:0/ppd/foo2zjs/HP-LaserJet_Pro_P1102.ppd",
+      "desc": "HP LaserJet Pro P1102 Foomatic/foo2zjs-z2 (recommended) (Score: 80)",
+      "expected_needle": "HP-LaserJet_Pro_P1102",
+      "passed": true
+    },
+    {
+      "vendor": "HP",
+      "model": "LaserJet 1020",
+      "category": "foo2zjs / PCL Laser",
+      "assigned_uri": "foo2zjs:0/ppd/foo2zjs/HP-LaserJet_1020.ppd",
+      "desc": "HP LaserJet 1020 Foomatic/foo2zjs-z1 (recommended) (Score: 130)",
+      "expected_needle": "HP-LaserJet_1020",
+      "passed": true
+    },
+    {
+      "vendor": "HP",
+      "model": "LaserJet M1132",
+      "category": "foo2zjs / PCL Laser",
+      "assigned_uri": "foo2zjs:0/ppd/foo2zjs/HP-LaserJet_Pro_M1132s_MFP.ppd",
+      "desc": "HP LaserJet Pro M1132s MFP Foomatic/foo2xqx (recommended) (Score: 130)",
+      "expected_needle": "HP-LaserJet_Pro_M1132s_MFP",
+      "passed": true
+    },
+    {
+      "vendor": "HP",
+      "model": "DeskJet 2130",
+      "category": "hpijs Inkjet",
+      "assigned_uri": "drv:///hpijs.drv/hp-deskjet_2130_series-hpijs.ppd",
+      "desc": "HP Deskjet 2130 Series hpijs (Score: 127)",
+      "expected_needle": "hp-deskjet_2130_series-hpijs",
+      "passed": true
+    },
+    {
+      "vendor": "HP",
+      "model": "Ink Tank 115",
+      "category": "hpijs Inkjet",
+      "assigned_uri": "drv:///hpijs.drv/hp-ink_tank_110_series-hpijs.ppd",
+      "desc": "HP Ink Tank 110 Series hpijs (Score: 102)",
+      "expected_needle": "hp-ink_tank_110_series-hpijs",
+      "passed": true
+    },
+    {
+      "vendor": "Zebra",
+      "model": "ZD230",
+      "category": "ZPL / EPL Label",
+      "assigned_uri": "drv:///sample.drv/zebraep2.ppd",
+      "desc": "Zebra Label (sample.drv)",
+      "expected_needle": "zebraep2",
+      "passed": true
+    },
+    {
+      "vendor": "Zebra",
+      "model": "GK420t",
+      "category": "ZPL / EPL Label",
+      "assigned_uri": "drv:///sample.drv/zebraep2.ppd",
+      "desc": "Zebra Label (sample.drv)",
+      "expected_needle": "zebraep2",
+      "passed": true
+    }
+  ],
+  "t5_details": {
+    "zram": {
+      "filesystem": "/dev/zram1",
+      "total_kb": 47960,
+      "used_kb": 1504,
+      "avail_kb": 42872,
+      "use_percent": 4.0
+    },
+    "system": {
+      "loadavg": [
+        2.05,
+        2.32,
+        1.27
+      ],
+      "mem_total_mb": 1917.8,
+      "mem_used_mb": 412.9,
+      "mem_avail_mb": 1504.9,
+      "mem_used_percent": 21.5
+    },
+    "verdict": "PASS"
+  }
+}

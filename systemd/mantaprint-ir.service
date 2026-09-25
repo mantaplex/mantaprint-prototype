@@ -1,0 +1,12 @@
+[Unit]
+Description=MantaPrint IR Remote Keytable Loader (Optional)
+ConditionPathExists=/sys/class/rc/rc0
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/ir-keytable -c -p nec,rc-5 -w /etc/rc_keymaps/mantaprint_remote.toml -D 250 -P 100
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

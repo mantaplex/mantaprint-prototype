@@ -1,0 +1,21 @@
+[Unit]
+Description=MantaPrint Universal Print Hub Realtime Web Dashboard
+After=network.target cups.service avahi-daemon.service ipp-usb.service
+Wants=cups.service avahi-daemon.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mantaprint/web
+ExecStart=/usr/bin/node --expose-gc --max-old-space-size=64 --max-semi-space-size=2 /opt/mantaprint/web/server/server.mjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=80
+MemoryHigh=150M
+MemoryMax=200M
+LimitNOFILE=16384
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

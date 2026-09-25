@@ -1,0 +1,20 @@
+[Unit]
+Description=MantaPrint Fleet Management Agent
+After=network.target mantaprint-web.service
+Wants=mantaprint-web.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node --experimental-websocket --max-old-space-size=16 --max-semi-space-size=1 --expose-gc /opt/mantaprint/agent/agent.mjs
+Restart=always
+RestartSec=5s
+Environment=NODE_ENV=production
+Environment=MALLOC_ARENA_MAX=2
+Environment=UV_THREADPOOL_SIZE=2
+Nice=5
+MemoryHigh=20M
+MemoryMax=25M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

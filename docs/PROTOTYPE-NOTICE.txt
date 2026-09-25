@@ -1,0 +1,41 @@
+MANTAPRINT PROTOTYPE - READ BEFORE INSTALLING
+=============================================
+
+MantaPrint (Hub, Scan Studio, Scanner PWA and MantaPool) is an
+EXPERIMENTAL PROTOTYPE. It is NOT a finished product and it has NOT
+been hardened, audited or penetration-tested.
+
+KNOWN SECURITY WEAKNESSES (not a complete list)
+  - Web apps are served over plain HTTP. Logins, admin tokens and
+    scanned documents cross the network unencrypted.
+  - Every install uses the same default admin password until you
+    change it (Hub: mantaprint / mantapgan).
+  - CUPS remote administration is enabled on the local network.
+  - MantaPool: most API routes do not check a login session; it
+    signs in to hubs by trying built-in default passwords; its SSO
+    passes admin tokens in the URL; the fleet enrollment token is
+    hard-coded; the agent channel is unencrypted (ws://).
+  - Updates are downloaded from GitHub without signature checks.
+  - The installer runs the third-party NodeSource setup script
+    (curl | bash) without verifying it.
+  Full list: docs/KNOWN-LIMITATIONS.md and SECURITY.md
+
+DO NOT USE IT
+  - for personal or sensitive data (ID cards, bank or health
+    records, customer documents);
+  - in production, financial, healthcare or other regulated
+    environments;
+  - on networks reachable from the internet or by untrusted users.
+
+IF YOU INSTALL IT ANYWAY
+  - put it on an isolated network segment (lab / test VLAN);
+  - change the default admin password immediately;
+  - restrict access with a firewall to people you trust;
+  - treat every document that passes through it as exposed.
+
+NO WARRANTY, NO LIABILITY
+  This software is provided "AS IS", without warranty of any kind,
+  express or implied (MIT License, see LICENSE). The authors and
+  contributors are not liable for any claim, damage, data loss,
+  data leak or other liability arising from its use. You install
+  and operate it entirely at your own risk.

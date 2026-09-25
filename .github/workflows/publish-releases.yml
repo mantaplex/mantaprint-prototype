@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+# One run at a time, so a push to main and a tag push never create the same release twice.
+concurrency:
+  group: publish-releases
+  cancel-in-progress: false
+
 jobs:
   publish-releases:
     name: Sync GitHub Releases

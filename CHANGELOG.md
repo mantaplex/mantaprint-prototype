@@ -12,6 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
+**Driver Center.** A new admin page, *Drivers & devices*, gathers everything about device support:
+what each connected device still needs, an offline "is model X supported?" check, uploads of vendor
+files the hub can't ship with (PPD, `.deb`, HP plugin, HP LaserJet firmware, installer archives) with a
+confirmation popup before anything runs as root, installs from a fixed apt allowlist, and a catalog with
+honest status per family. First concrete use: HP MFPs such as the LaserJet MFP M130a scan only once
+HP's proprietary plugin is installed; the admin now uploads it.
+
+### Added
+- **Admin → Drivers & devices** (`frontend/src/admin/sections/Drivers.jsx`, `src/web/server/driver-center.mjs`, routes `/api/drivers/*`; see `docs/13-driver-center.md`): *Your devices* (queues with readiness, scanners, ScanSnaps waiting for firmware, HP MFPs waiting for the plugin, unprovisioned USB printers) each with its needs, vendor download link and a targeted upload button; *Check a model* (`/api/drivers/lookup`) answered from the PPD index, SANE's hwdb, HPLIP's `models.dat` and the catalog; one upload area that classifies `.ppd`/`.ppd.gz`, `.deb`, `hplip-*-plugin.run` (+`.asc`), `sihpXXXX.dl` and installer archives (unpacked up to three levels); `.deb` and archive contents become *pending* items, a `.deb` is installed only after a confirmation popup showing package, version, architecture (checked against the hub's), maintainer, dependencies, whether it has maintainer scripts and its SHA-256; *Installed by you* registry in `/etc/mantaprint/drivers.json` with removal; *Packages from the Debian repositories* from a fixed allowlist (`apt-get`, needs internet); the catalog (`src/web/server/driver-recipes.json`, 18 families) with `verified` / `available` / `needs_file` / `unsupported` status. Long installs run as one background job with a live log. Scanner and Printers link to the page.
+- **HP plugin provisioning** (`src/web/server/hplip-plugin.mjs`). Connected HP USB devices are looked up in HPLIP's own database (`/usr/share/hplip/data/models/models.dat`); a `plugin` value > 0 or the scan bit (64) in `plugin-reason` marks the scanner as needing the plugin. `GET /api/drivers/hplip` reports the installed HPLIP version, whether the plugin is installed (`/var/lib/hp/hplip.state` plus the plugin `.so` files), the exact file name to download (`hplip-<version>-plugin.run`, the version must match HPLIP) and the devices waiting for it. `POST /api/drivers/hplip/plugin` receives the `.run` (streamed to disk, name and version checked first), optionally HP's detached `.asc` signature (`?kind=asc`, stored beside it so `hp-plugin` can verify it), runs `hp-plugin -i -p <file>` non-interactively, verifies the result and re-probes the scanner. Failures come back with a code and the tail of hp-plugin's output.
+- **Admin → Scanner: "Drivers & firmware".** The ScanSnap firmware row moves here and gets a sibling row for the HP plugin (installed version, or the file to download from developers.hp.com with a link). When an HP MFP that needs the plugin is plugged in, an amber card replaces "No scanner detected", like the ScanSnap firmware card. Overview lists it under *Needs attention*; Scan Studio says "*{model} needs the HP plugin*" instead of "no scanner".
+- `plugin_required` on the scanner status (next to `firmware_required`), an `hp-mfp-hpaio` scanner profile for anything on SANE's `hpaio` backend, and unit tests for the models.dat lookup, version checks, state parsing and sysfs detection (`test/hplip-plugin.test.mjs`).
+- `install.sh` installs `hplip` (provides `hp-plugin`) and `gnupg`.
+- Unit tests for the Driver Center engine (`test/driver-center.test.mjs`: catalog matching, upload classification, hwdb/PPD-index lookups, device needs, deb control parsing, registry, firmware install guard rails).
+
+### Changed
+- Overview: `ipp-usb` shows *Standby* (neutral) instead of a red *Stopped* when no IPP-over-USB device is plugged in; udev only starts it on demand.
+- `docs/KNOWN-LIMITATIONS.md` gains I5: driver uploads run vendor code as root. `docs/SUPPORTED_DEVICES.md` explains the HP plugin requirement.
+
+### Not yet verified on hardware
+- The HP plugin install path (`hp-plugin -i -p`, arm64 plugin, M130a scanning through `hpaio`) is implemented and unit-tested around it, but has not yet been run against a real M130a on a hub.
+- Likewise `.deb` installation (Canon UFR II LT) and PPD assignment to a live queue through the new page.
+
+---
+
 ## [0.3.2] - 2026-09-29
 
 ### Fixed

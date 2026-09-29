@@ -2,6 +2,9 @@
 
 This document provides the complete, authoritative compatibility list of printers and scanners verified, tested, bundled, and automatically provisioned by **MantaPrint Hub**.
 
+> [!TIP]
+> The live version of this list is **Admin → Drivers & devices** on the hub: it shows what each connected device still needs, answers "is model X supported?" from the hub's own data, and takes the vendor files (PPD, `.deb`, HP plugin, firmware) the hub can't ship with. Its catalog comes from `src/web/server/driver-recipes.json`; update that file when this document changes.
+
 > [!NOTE]
 > ### Reading "Auto-Provisioned" / "Plug-and-Play" below
 > Only **Canon G3030 and Canon LBP6030** have been verified on real appliance hardware (see the
@@ -152,7 +155,7 @@ MantaPrint includes pre-packaged, native binary filters for both modern and lega
 | **Host-Based LaserJet (ZjStream)**| HP LaserJet 1018, 1020, 1022, P1005, P1006, P1007, P1008, P1505 — genuinely need a firmware upload every power-cycle (HPLIP `fw-download=True`), automated on ARM64; see [`12-driver-compatibility.md`](12-driver-compatibility.md) | `printer-driver-foo2zjs` (`foo2zjs`) | Automatic USB firmware stream via `getweb` + `arm2hpdl`, delivered over the CUPS `usb` backend |
 | **Host-Based LaserJet (no firmware needed)** | HP LaserJet Pro P1102, P1102w, M12a, M15a, M102a and the wider M1xx/M13x families — `fw-download=False` per HPLIP; print with the open `foo2zjs`/`hpcups` filters alone on ARM64, no proprietary plugin required | `printer-driver-foo2zjs` / `printer-driver-hpcups` | Standard PJL/PCLm laser printing |
 | **Pro Monochrome Laser** | LaserJet Pro M12a, M15a, M102a, M203dn, M402dn | `printer-driver-hpcups` (`hpcups`) | High-speed rendering, low-RAM raster |
-| **LaserJet Pro MFP** | LaserJet Pro MFP M130a/nw, M227fdw | `printer-driver-hpcups` + `libsane-hpaio` | Printing + Flatbed scanning |
+| **LaserJet Pro MFP** | LaserJet Pro MFP M130a/nw, M227fdw | `printer-driver-hpcups` + `libsane-hpaio` + **HP plugin** | Printing; flatbed scanning only after HP's proprietary plugin is uploaded in Admin → Scanner (see below) |
 | **HP Smart Tank** | Smart Tank 500, 515, 615, 720, 750 | IPP / `hpcups` | Full CMYK levels & borderless print |
 | **DeskJet / Ink Advantage** | DeskJet 2130, 2300, 2700, 3700, Ink Advantage 1515, 2545 | `printer-driver-hpcups` | Lightweight consumer printing |
 
@@ -288,6 +291,16 @@ These units have dedicated profiles in `SCANNER_PROFILES` with optimized resolut
 | **Canon** | PIXMA G3030, G2020, G3010, MG2500, MG3600 | `pixma` / `escl` | 75, 150, 300, 600, 1200 | Color (24-bit), Grayscale, Binarized |
 | **Epson** | EcoTank L3110, L3150, L3210, L3250, Perfection V39 | `epson2` / `escl` | 75, 150, 300, 600, 1200 | Color, Gray, Lineart |
 | **HP** | Smart Tank 500/515, DeskJet Ink Advantage, LaserJet Pro MFP | `libsane-hpaio` / `escl` | 75, 150, 300, 600 | Color, Gray |
+
+> [!IMPORTANT]
+> **HP multifunction scanners need HP's proprietary plugin.** HPLIP prints without it, but for most
+> HP MFPs (LaserJet MFP M130a among them; HPLIP's `models.dat` marks them `plugin-reason` 64)
+> SANE's `hpaio` backend only lists the scanner once `hplip-<version>-plugin.run` is installed. The
+> plugin is HP-licensed and can't ship with the hub or be downloaded by it. When such a printer is
+> plugged in, **Admin → Scanner** shows "*needs HP's scanner plugin*" with the exact file name to
+> download from [developers.hp.com](https://developers.hp.com/hp-linux-imaging-and-printing/plugins)
+> (its version must equal the hub's HPLIP version) and an upload button; the hub runs `hp-plugin`
+> and re-probes. Not yet verified on real hardware: the arm64 plugin with an M130a on this hub.
 | **Brother** | DCP-1510, DCP-1610W, DCP-T420W, DCP-T520W, MFC-T920DW | `brother4` / `escl` | 100, 200, 300, 600 | Color, Gray |
 
 ---

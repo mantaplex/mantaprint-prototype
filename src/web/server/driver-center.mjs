@@ -60,6 +60,7 @@ export const APT_ALLOWLIST = [
   { name: 'sane-utils', for: 'SANE tools (scanimage)' },
   { name: 'ipp-usb', for: 'Driverless IPP-over-USB printers and scanners' },
   { name: 'cups-filters', for: 'CUPS filter chain' },
+  { name: 'nftables', for: 'Firewall used by Lockdown mode (print-only)' },
   { name: 'p7zip-full', for: 'Unpacking vendor installers (.exe/.zip/.7z)' },
   { name: 'cabextract', for: 'Unpacking Windows .cab installers' },
   { name: 'unshield', for: 'Unpacking InstallShield installers' }

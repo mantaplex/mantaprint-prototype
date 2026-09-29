@@ -214,6 +214,7 @@ PRINTER_SCANNER_DRIVERS=(
     libsane-hpaio
     hplip
     gnupg
+    nftables
 )
 
 OPTIONAL_PACKAGES=(
@@ -458,6 +459,11 @@ if [ -d "$SCRIPT_DIR/system/systemd" ]; then
     cp -a "$SCRIPT_DIR/system/systemd/"*.service /etc/systemd/system/ 2>/dev/null || true
 fi
 COMPLETED_STEPS+=("Application artifacts, systemd service units, and udev rules installed")
+
+# Lockdown mode (print-only firewall) is re-applied at boot when it was enabled; harmless otherwise.
+systemctl daemon-reload
+systemctl enable mantaprint-lockdown.service >/dev/null 2>&1 || true
+/usr/local/bin/mantaprint-lockdown apply >/dev/null 2>&1 || true
 
 # Configure ZRAM swap and in-memory tmpfs mounts for Zero-eMMC wear
 echo "  Configuring ZRAM swap and tmpfs mount policies for zero-eMMC wear..."

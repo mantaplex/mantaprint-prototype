@@ -204,7 +204,7 @@ export const hubId = {
 export const admEn = {
   title: 'Admin',
   common: { save: 'Save', saved: 'Saved.', refresh: 'Refresh', confirm: 'Confirm', loading: 'Loading…' },
-  header: { home: 'Back to home', account: 'Account', logout: 'Log out', loggedOut: 'You have been logged out.', updateAvailable: 'Update available' },
+  header: { home: 'Back to home', account: 'Account', logout: 'Log out', loggedOut: 'You have been logged out.', updateAvailable: 'Update available', lockdown: 'LOCKDOWN' },
   nav: { overview: 'Overview', printers: 'Printers', queue: 'Queue', scanner: 'Scanner', drivers: 'Drivers & devices', network: 'Network', settings: 'Settings', updates: 'Updates' },
   drivers: {
     title: 'Drivers & devices',
@@ -333,6 +333,8 @@ export const admEn = {
       scannerFirmware: '{model} is waiting for its firmware',
       scannerFirmwareDesc: 'Upload the ScanSnap firmware file from Scanner.',
       scannerPlugin: '{model} needs HP\'s scanner plugin',
+      lockdown: 'Lockdown mode is on: this hub only prints',
+      lockdownDesc: 'Scanning, the homepage, updates and MantaPool are blocked. Admin console reachable from: {ips}. Turn it off in Settings (needs the PIN) or on the hub\'s console.',
       scannerPluginDesc: 'Upload HP\'s plugin file from Scanner.',
       service: '{name} is not running',
       serviceDesc: 'Printing or discovery may not work. Try restarting it below.',
@@ -680,6 +682,26 @@ export const admEn = {
   },
   settings: {
     title: 'Settings',
+    lockdown: {
+      title: 'Lockdown mode (print-only)',
+      desc: 'A firewall on the hub that leaves only printing (IPP 631) and printer discovery (mDNS) reachable. The same switch is in the hub\'s console (TUI).',
+      printOnlyTitle: 'Lockdown is for printing only.',
+      printOnlyDesc: 'While it is on: scanning and Scan Studio, the homepage, this admin console (except from the admin IPs below), SSH, updates from GitHub and the MantaPool agent are all blocked. Turning it off needs the lockdown PIN.',
+      enabled: 'LOCKDOWN ON', enabledNotApplied: 'On, but firewall not loaded', disabled: 'Off',
+      counters: 'Dropped: {i} inbound, {o} outbound packets', since: 'on since {at} ({by})',
+      adminIps: 'Admin IPs allowed to reach this console', adminIpsHint: 'IPv4 addresses or CIDRs, comma separated. Empty = this console is reachable from nowhere; only the hub\'s own screen/keyboard can turn lockdown off.',
+      ssh: 'Allow SSH from the admin IPs', sshDesc: 'Off by default. Existing SSH sessions survive; new ones are refused unless allowed here.',
+      saveAccess: 'Save access list', turnOn: 'Turn lockdown on', turnOff: 'Turn lockdown off',
+      pin: 'Lockdown PIN', pinCurrent: 'Current PIN', pinNew: 'New PIN', changePin: 'Change PIN', pinDefaultHint: 'Still the default PIN (1234). Change it.',
+      confirmOnTitle: 'Turn lockdown on?', confirmOffTitle: 'Turn lockdown off',
+      confirmOnBody: 'From now on this hub only prints. Everything else is blocked at the firewall:',
+      confirmOnIps: 'This admin console stays reachable from: {ips}.',
+      confirmOnNoIps: 'No admin IPs are set: this admin console will NOT be reachable from the network. Only the hub\'s console (screen + keyboard) can turn lockdown off.',
+      confirmOnPin: 'You will need the lockdown PIN to turn it off.',
+      confirmOffBody: 'Enter the lockdown PIN to remove the firewall and restore all services.',
+      blocks: { scan: 'Scanning, Scan Studio and the scanner app', home: 'The public homepage (print-from-browser)', admin: 'This admin console, except from the admin IPs', ssh: 'SSH (unless allowed from the admin IPs)', updates: 'Update checks and downloads from GitHub', pool: 'The MantaPool fleet agent' },
+      errors: { bad_pin: 'Wrong PIN.', weak_pin: 'The PIN must be 4 to 8 digits.', bad_admin_ip: 'Not a valid IPv4 address or CIDR: {bad}', nft_missing: 'nftables is not installed on this hub. Install the "nftables" package from Drivers & devices, or re-run the installer.', nft_failed: 'The firewall rules could not be loaded: {tail}', generic: 'Something went wrong.' }
+    },
     desc: 'Hub name, language, time and the admin account.',
     hostname: {
       title: 'Hub name',
@@ -742,7 +764,7 @@ export const admEn = {
 export const admId = {
   title: 'Admin',
   common: { save: 'Simpan', saved: 'Tersimpan.', refresh: 'Muat ulang', confirm: 'Konfirmasi', loading: 'Memuat…' },
-  header: { home: 'Kembali ke beranda', account: 'Akun', logout: 'Keluar', loggedOut: 'Anda telah keluar.', updateAvailable: 'Ada pembaruan' },
+  header: { home: 'Kembali ke beranda', account: 'Akun', logout: 'Keluar', loggedOut: 'Anda telah keluar.', updateAvailable: 'Ada pembaruan', lockdown: 'LOCKDOWN' },
   nav: { overview: 'Ringkasan', printers: 'Printer', queue: 'Antrean', scanner: 'Scanner', drivers: 'Driver & perangkat', network: 'Jaringan', settings: 'Pengaturan', updates: 'Pembaruan' },
   drivers: {
     title: 'Driver & perangkat',
@@ -871,6 +893,8 @@ export const admId = {
       scannerFirmware: '{model} menunggu firmware',
       scannerFirmwareDesc: 'Unggah file firmware ScanSnap dari menu Scanner.',
       scannerPlugin: '{model} butuh plugin scanner HP',
+      lockdown: 'Mode lockdown aktif: hub ini hanya mencetak',
+      lockdownDesc: 'Pemindaian, halaman utama, pembaruan, dan MantaPool diblokir. Konsol admin bisa diakses dari: {ips}. Matikan di Pengaturan (butuh PIN) atau di konsol hub.',
       scannerPluginDesc: 'Unggah file plugin HP dari menu Scanner.',
       service: '{name} tidak berjalan',
       serviceDesc: 'Pencetakan atau penemuan printer mungkin terganggu. Coba mulai ulang di bawah.',
@@ -1218,6 +1242,26 @@ export const admId = {
   },
   settings: {
     title: 'Pengaturan',
+    lockdown: {
+      title: 'Mode lockdown (hanya cetak)',
+      desc: 'Firewall di hub yang hanya menyisakan pencetakan (IPP 631) dan penemuan printer (mDNS). Sakelar yang sama ada di konsol hub (TUI).',
+      printOnlyTitle: 'Lockdown hanya untuk mencetak.',
+      printOnlyDesc: 'Selama aktif: pemindaian dan Scan Studio, halaman utama, konsol admin ini (kecuali dari IP admin di bawah), SSH, pembaruan dari GitHub, dan agen MantaPool semuanya diblokir. Mematikannya butuh PIN lockdown.',
+      enabled: 'LOCKDOWN AKTIF', enabledNotApplied: 'Aktif, tapi firewall belum termuat', disabled: 'Nonaktif',
+      counters: 'Diblokir: {i} paket masuk, {o} paket keluar', since: 'aktif sejak {at} ({by})',
+      adminIps: 'IP admin yang boleh mengakses konsol ini', adminIpsHint: 'Alamat IPv4 atau CIDR, dipisah koma. Kosong = konsol ini tidak bisa diakses dari mana pun; hanya layar/keyboard hub yang bisa mematikan lockdown.',
+      ssh: 'Izinkan SSH dari IP admin', sshDesc: 'Nonaktif secara default. Sesi SSH yang sudah ada tetap hidup; sesi baru ditolak kecuali diizinkan di sini.',
+      saveAccess: 'Simpan daftar akses', turnOn: 'Aktifkan lockdown', turnOff: 'Matikan lockdown',
+      pin: 'PIN lockdown', pinCurrent: 'PIN saat ini', pinNew: 'PIN baru', changePin: 'Ganti PIN', pinDefaultHint: 'Masih PIN bawaan (1234). Ganti.',
+      confirmOnTitle: 'Aktifkan lockdown?', confirmOffTitle: 'Matikan lockdown',
+      confirmOnBody: 'Mulai sekarang hub ini hanya mencetak. Yang lain diblokir di firewall:',
+      confirmOnIps: 'Konsol admin ini tetap bisa diakses dari: {ips}.',
+      confirmOnNoIps: 'IP admin belum diisi: konsol admin ini TIDAK bisa diakses dari jaringan. Hanya konsol hub (layar + keyboard) yang bisa mematikan lockdown.',
+      confirmOnPin: 'Anda butuh PIN lockdown untuk mematikannya.',
+      confirmOffBody: 'Masukkan PIN lockdown untuk melepas firewall dan memulihkan semua layanan.',
+      blocks: { scan: 'Pemindaian, Scan Studio, dan aplikasi scanner', home: 'Halaman utama publik (cetak dari browser)', admin: 'Konsol admin ini, kecuali dari IP admin', ssh: 'SSH (kecuali diizinkan dari IP admin)', updates: 'Pengecekan dan unduhan pembaruan dari GitHub', pool: 'Agen fleet MantaPool' },
+      errors: { bad_pin: 'PIN salah.', weak_pin: 'PIN harus 4 sampai 8 digit.', bad_admin_ip: 'Bukan alamat IPv4 atau CIDR yang valid: {bad}', nft_missing: 'nftables belum terpasang di hub ini. Pasang paket "nftables" dari Driver & perangkat, atau jalankan ulang installer.', nft_failed: 'Aturan firewall tidak bisa dimuat: {tail}', generic: 'Terjadi kesalahan.' }
+    },
     desc: 'Nama hub, bahasa, waktu, dan akun admin.',
     hostname: {
       title: 'Nama hub',

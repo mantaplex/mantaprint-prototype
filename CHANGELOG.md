@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+**Lockdown mode (print-only).** For sites where the hub must expose as little as possible: one
+switch that leaves only printing reachable. See `docs/14-lockdown-mode.md`.
+
+### Added
+- **Lockdown mode** (`src/web/server/lockdown.mjs`, `system/bin/mantaprint-lockdown`, `systemd/mantaprint-lockdown.service`). An nftables ruleset (`table inet mantaprint_lockdown`, default drop both ways) allows inbound only IPP `631/tcp`, mDNS `5353/udp`, DHCP and ICMP; the admin web `80/tcp` only from the admin IPs/CIDRs the operator lists (none listed = unreachable from the network); SSH `22/tcp` from the same list only when enabled; outbound only DHCP, DNS, NTP and mDNS, which also blocks update checks and the MantaPool agent. `cups-browsed` is disabled. The ruleset is written to `/etc/mantaprint/lockdown.nft` and re-applied at boot by the new service. Dropped packets are counted and shown.
+- **Switch in the TUI** (Diagnostics → *9. Lockdown Mode (print-only)*) with a dialog that lists what stops working, takes an optional admin IP/CIDR, and asks the PIN when turning it off; the TUI header shows `[LOCKDOWN]`.
+- **Admin → Settings → Lockdown mode**: status with drop counters, admin IP list, SSH toggle, PIN change (default `1234`, 4–8 digits, salted scrypt hash in `/etc/mantaprint/lockdown.json`), and confirmation dialogs that spell out the consequences. The admin header shows a red **LOCKDOWN** pill and Overview lists it under *Needs attention*.
+- Routes: `GET /api/lockdown`, `POST /api/lockdown/enable`, `POST /api/lockdown/disable` (PIN), `POST /api/lockdown/config` (admin session). `/api/status` carries a `lockdown` summary.
+- `install.sh` installs `nftables` and enables `mantaprint-lockdown.service`; `nftables` is also on the Drivers & devices apt allowlist for hubs installed before this version.
+- Unit tests (`test/lockdown.test.mjs`): admin IP/CIDR parsing, PIN hashing, ruleset content, config round-trip.
+
+### Not yet verified on hardware
+- The ruleset was reviewed for nft syntax but not loaded on a hub yet; first enable it from the console with a second SSH session open (existing sessions survive) so it can be cleared with `mantaprint-lockdown clear` if anything is off.
+
+---
+
 ## [0.4.0] - 2026-09-29
 
 **Driver Center.** A new admin page, *Drivers & devices*, gathers everything about device support:

@@ -60,6 +60,11 @@ office/branch LAN.
 
 ## Interim mitigations if you run it anyway
 
+0. **Turn on Lockdown mode** (Admin → Settings, or the hub's console): a print-only firewall that
+   leaves only IPP 631 and mDNS reachable, the admin web only from listed admin IPs, and blocks all
+   other traffic in both directions. See `docs/14-lockdown-mode.md`. It does not fix H1–H9; it
+   hides most of them from the network.
+
 1. Install only on an **isolated lab/test network segment** (dedicated VLAN), never internet-facing.
 2. **Change the default admin passwords** (hub and MantaPool) right after installation.
 3. Firewall the device: allow printing (IPP 631) only from client subnets, and web/admin (80, 8443)

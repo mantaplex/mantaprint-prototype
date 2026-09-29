@@ -3729,15 +3729,20 @@ const server = http.createServer(async (req, res) => {
       const [status, hp, apt] = await Promise.all([getOrFetchStatus(), getHplipPluginStatus(), driverCenter.aptStatus()]);
       const { recipes } = driverCenter.loadRecipes();
       const firmware = scannerFirmwareStatus();
-      const installed = new Set(apt.packages.filter(p => p.installed).map(p => p.name));
+      // dpkg state for every package the checklists care about (allowlist, family apt lists,
+      // vendor .deb names), plus anything installed through this page.
+      const installed = await driverCenter.installedPackages(driverCenter.allPackageNames(recipes));
       for (const i of driverCenter.readRegistry().items) if (i.kind === 'deb' && i.package) installed.add(i.package);
-      const devices = driverCenter.deviceNeeds({ printers: status.printers || [], scanner: status.scanner, hp, firmware, usb: getConnectedUsbPrinters(), recipes, installed });
+      const facts = { installed, hplip: hp, nal: firmware, hpfw: driverCenter.presentHpFirmware() };
+      const devices = driverCenter.deviceNeeds({ printers: status.printers || [], scanner: status.scanner, hp, firmware, usb: getConnectedUsbPrinters(), recipes, installed })
+        .map(d => ({ ...d, ...driverCenter.deviceSteps(d, recipes.find(r => r.id === d.recipe?.id) || null, facts) }));
+      const catalog = recipes.map(r => ({ ...driverCenter.publicRecipe(r), ...driverCenter.familySteps(r, { ...facts, devices: devices.filter(d => d.recipe?.id === r.id) }) }));
       const tools = getExtractionTools();
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
       res.end(JSON.stringify({
         success: true,
         devices,
-        catalog: recipes.map(driverCenter.publicRecipe),
+        catalog,
         installed: driverCenter.readRegistry().items,
         pending: driverCenter.listPending(),
         apt,
@@ -3930,6 +3935,23 @@ const server = http.createServer(async (req, res) => {
         else if ((item.kind === 'ppd' || item.kind === 'dl') && item.path) { try { fs.unlinkSync(item.path); } catch {} }
         else if (item.kind === 'hplip-plugin' || item.kind === 'nal') { log('Only the record is removed; the installed files stay.'); }
         if (r.ok) driverCenter.removeRecord(item.id);
+        return r;
+      });
+      if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
+      return;
+    }
+
+    // HP host-based LaserJet firmware via foo2zjs' getweb (needs internet); runs as a job.
+    if (pathname === '/api/drivers/hp-firmware/fetch' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const models = (Array.isArray(body.models) ? body.models : [body.model]).map(String).filter(m => m in driverCenter.HP_FIRMWARE);
+      if (!models.length) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'bad_model' })); }
+      const job = driverCenter.startJob('hp-firmware', models.join(', '), async (log) => {
+        const r = await driverCenter.fetchHpFirmware(models, { log, workDir: fs.mkdtempSync(path.join(pickWorkBase().dir, 'getweb-')) });
+        if (r.fetched.length) runCmd('/usr/bin/python3', [printerManagerScript(), 'sync'], 120000).catch(() => {});
         return r;
       });
       if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }

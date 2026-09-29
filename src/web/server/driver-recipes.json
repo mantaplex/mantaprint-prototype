@@ -37,7 +37,8 @@
         "G3010",
         "G3020",
         "G3030"
-      ]
+      ],
+      "name": "PIXMA G-series MegaTank"
     },
     {
       "id": "canon-lbp6030-ufr2lt",
@@ -83,7 +84,8 @@
         "LBP151dw",
         "LBP7110Cw",
         "LBP8100n"
-      ]
+      ],
+      "name": "LBP laser (UFR II LT)"
     },
     {
       "id": "canon-capt",
@@ -110,7 +112,8 @@
         "LBP3050",
         "LBP6000",
         "LBP6018"
-      ]
+      ],
+      "name": "LBP laser (CAPT)"
     },
     {
       "id": "canon-lide",
@@ -140,7 +143,8 @@
         "LiDE 110",
         "LiDE 120",
         "LiDE 300"
-      ]
+      ],
+      "name": "CanoScan LiDE"
     },
     {
       "id": "fujitsu-scansnap-rom",
@@ -170,7 +174,8 @@
         "fi-6110",
         "fi-7160",
         "fi-6130Z"
-      ]
+      ],
+      "name": "ScanSnap iX / fi series"
     },
     {
       "id": "fujitsu-scansnap-epjitsu",
@@ -211,7 +216,8 @@
         "S1300i",
         "fi-60F",
         "fi-65F"
-      ]
+      ],
+      "name": "ScanSnap S-series (portable)"
     },
     {
       "id": "fujitsu-sv600",
@@ -230,7 +236,8 @@
       "apt": [],
       "models": [
         "ScanSnap SV600"
-      ]
+      ],
+      "name": "ScanSnap SV600"
     },
     {
       "id": "epson-ds-410",
@@ -268,7 +275,8 @@
         "WorkForce DS-410",
         "DS-530",
         "DS-570W"
-      ]
+      ],
+      "name": "WorkForce DS sheet-fed"
     },
     {
       "id": "epson-ecotank-escpr",
@@ -318,7 +326,8 @@
         "WF-2830",
         "WF-3720",
         "WF-7710"
-      ]
+      ],
+      "name": "EcoTank / WorkForce inkjet"
     },
     {
       "id": "hp-laserjet-hostbased-firmware",
@@ -354,7 +363,8 @@
         "P1007",
         "P1008",
         "P1505"
-      ]
+      ],
+      "name": "LaserJet 1000-P1505 (host-based)"
     },
     {
       "id": "hp-mfp-hplip-plugin",
@@ -398,7 +408,8 @@
         "Smart Tank 500",
         "Smart Tank 515",
         "ENVY"
-      ]
+      ],
+      "name": "LaserJet / DeskJet / OfficeJet MFP"
     },
     {
       "id": "hp-laserjet-pcl-ps",
@@ -426,7 +437,8 @@
         "M404",
         "M401",
         "LaserJet Enterprise"
-      ]
+      ],
+      "name": "LaserJet Pro / Enterprise"
     },
     {
       "id": "brother-brlaser",
@@ -462,7 +474,8 @@
         "DCP-L2520DW",
         "DCP-L2540DW",
         "MFC-L2700DW"
-      ]
+      ],
+      "name": "Brother laser (HL / DCP / MFC-L)"
     },
     {
       "id": "brother-inktank",
@@ -501,7 +514,8 @@
         "DCP-T420W",
         "DCP-T520W",
         "MFC-T920DW"
-      ]
+      ],
+      "name": "Brother ink tank (DCP-T / MFC-T)"
     },
     {
       "id": "samsung-xerox-splix",
@@ -534,7 +548,8 @@
         "Phaser 3117",
         "Phaser 3140",
         "WorkCentre 3025"
-      ]
+      ],
+      "name": "Samsung / Xerox laser (SPL)"
     },
     {
       "id": "fujixerox-docuprint",
@@ -558,12 +573,13 @@
         "M115w",
         "CP105b",
         "CM205b"
-      ]
+      ],
+      "name": "DocuPrint"
     },
     {
       "id": "pos-thermal-raw",
       "kind": "printer",
-      "vendor": "Various",
+      "vendor": "Receipt printers",
       "family": "ESC/POS receipt printers (Epson TM, Xprinter, Iware, generic 58/80 mm)",
       "match": {
         "model": "(TM-|XP-|POS-?\\d|58mm|80mm|receipt|thermal)"
@@ -582,12 +598,13 @@
         "Iware",
         "generic 58 mm",
         "generic 80 mm"
-      ]
+      ],
+      "name": "ESC/POS receipt printers"
     },
     {
       "id": "zebra-dymo-ptouch",
       "kind": "printer",
-      "vendor": "Zebra / Dymo / Brother P-touch",
+      "vendor": "Label printers",
       "family": "Label printers (ZPL/EPL, Dymo LabelWriter, P-touch)",
       "match": {
         "usb_vendor": "0a5f|0922|04f9",
@@ -610,7 +627,8 @@
         "Dymo LabelWriter 450",
         "Brother PT-P700",
         "QL-800"
-      ]
+      ],
+      "name": "Label printers (Zebra / Dymo / P-touch)"
     }
   ]
 }

@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.7] - 2026-09-29
+
+### Changed
+- **Drivers & devices is now a checklist you run in place.** For every connected device and every catalog family the hub computes the ordered steps it needs (`familySteps` / `deviceSteps` in `driver-center.mjs`: support packages → vendor `.deb` / HP plugin / ScanSnap `.nal` / HP LaserJet firmware → PPD fallback → connect → verify), marks which are done from dpkg, HPLIP, the firmware caches and the printer readiness verdict, and puts the matching action on each open step: *Install support*, *Upload .deb / plugin / .nal / .dl / PPD*, *Fetch from HP (internet)*, *Send firmware now*, *Print test page*, *Open the scanner*. Device cards and family rows share the engine, so the M130a card and the "LaserJet / DeskJet / OfficeJet MFP" family show the same two steps. Blocked steps say what they wait for and show no buttons. `GET /api/drivers/overview` returns `steps[]` + `summary` per device and family.
+- **HP LaserJet 1000 / 1005 / 1018 / 1020 / P1005–P1505 firmware can be fetched from the page** (`POST /api/drivers/hp-firmware/fetch {models[]}`, foo2zjs `getweb`, needs internet) when the installer could not. Fetched or uploaded `.dl` files are also kept in `/mnt/data/firmware/hp` (or `/var/cache/mantaprint/firmware/hp`) so they survive an OTA update. A printer card only talks about its own firmware file (P1007 shares P1005's, P1008 shares P1006's).
+- Catalog families have short names; *Receipt printers*, *Label printers* and *Fujitsu* replace raw vendor ids. Families with a connected device and single search hits open by themselves, and a *Needs setup* filter shows only families with open steps. "Check a model" moved under the list as the fallback for models that are not in the catalog.
+
+### Fixed
+- The overview's package state now covers every package the checklists mention (allowlist, family `apt` lists, vendor `.deb` names), not only the allowlist.
+- A printer readiness reason the UI has no text for no longer shows a raw translation key.
+
+---
+
 ## [0.3.6] - 2026-09-29
 
 ### Changed

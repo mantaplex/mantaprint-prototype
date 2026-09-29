@@ -237,13 +237,25 @@ fi
 COMPLETED_STEPS+=("Vendor driver suite provisioned (Brother, Canon, Epson, HP, Samsung, Xerox, Dymo)")
 
 # Provision HP LaserJet Cold-Firmware for Host-Based Printers (1000, 1005, 1018, 1020, P1005, P1006, P1505)
-if command -v getweb >/dev/null 2>&1; then
-    echo "  Provisioning HP LaserJet cold firmware (foo2zjs getweb)..."
+# Optional and network-bound: getweb fetches from third-party mirrors, so each download is capped
+# at 60 s and the whole step can be skipped with MANTAPRINT_SKIP_HP_FIRMWARE=1 (the admin console
+# can provision this firmware later, per printer).
+if [ "${MANTAPRINT_SKIP_HP_FIRMWARE:-0}" = "1" ]; then
+    WARNING_STEPS+=("HP LaserJet cold firmware skipped (MANTAPRINT_SKIP_HP_FIRMWARE=1); provision it later from Admin > Printers")
+elif command -v getweb >/dev/null 2>&1; then
+    echo "  Provisioning HP LaserJet cold firmware (foo2zjs getweb, 60 s per model, Ctrl+C-safe)..."
     mkdir -p /etc/foo2zjs/firmware /usr/share/foo2zjs/firmware
+    FW_OK=(); FW_FAIL=()
     for model in 1000 1005 1018 1020 P1005 P1006 P1505; do
-        getweb $model >/dev/null 2>&1 || true
+        printf "    - LaserJet %-6s " "$model"
+        if timeout 60 getweb "$model" >/dev/null 2>&1; then echo "ok"; FW_OK+=("$model"); else echo "skipped (download failed or timed out)"; FW_FAIL+=("$model"); fi
     done
-    COMPLETED_STEPS+=("HP LaserJet cold firmware provisioned (foo2zjs 1000/1005/1018/1020/P1005/P1006/P1505)")
+    if [ ${#FW_OK[@]} -gt 0 ]; then
+        COMPLETED_STEPS+=("HP LaserJet cold firmware provisioned (${FW_OK[*]})")
+    fi
+    if [ ${#FW_FAIL[@]} -gt 0 ]; then
+        WARNING_STEPS+=("HP LaserJet cold firmware not fetched for ${FW_FAIL[*]} (no internet or mirror down); provision later from Admin > Printers")
+    fi
 fi
 
 # Archive tools the admin Scanner page uses to pull a ScanSnap's .nal firmware out of the
@@ -279,7 +291,7 @@ fi
 
 if [ "$NODE_OK" = false ]; then
     echo "  Installing Node.js 20 LTS from official NodeSource repository..."
-    if curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs; then
+    if curl -fsSL --max-time 120 https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs; then
         echo "  Installed Node.js $(node -v)"
         COMPLETED_STEPS+=("Node.js 20 LTS installed ($(node -v))")
     else

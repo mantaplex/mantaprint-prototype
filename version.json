@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "semantic": {
     "major": 0,
     "minor": 3,
-    "patch": 1
+    "patch": 2
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.3.1"
+    "tag": "v0.3.2"
   },
   "build": {
-    "timestamp": "2026-09-29T00:00:00Z",
+    "timestamp": "2026-09-29T02:00:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,15 +22,15 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Installer: HP LaserJet firmware downloads (foo2zjs getweb) are capped at 60 s per model, show progress, and can be skipped with MANTAPRINT_SKIP_HP_FIRMWARE=1; the step no longer hangs the installation when the mirror is unreachable.",
     "Installer: the prototype notice is printed as plain text again (no whiptail dialog). The dialog could not take over the keyboard when the installer output was piped, e.g. to tee, so Enter and y did nothing.",
     "PROTOTYPE RELEASE: MantaPrint is published as a prototype. It is not hardened for production, sensitive data or regulated environments. Read SECURITY.md and docs/KNOWN-LIMITATIONS.md before installing.",
-    "New home: github.com/mantaplex/mantaprint-prototype. All updater and documentation links point to the new repository.",
-    "Installer now shows a prototype risk notice and requires explicit acceptance before changing the system; acceptance is recorded in /etc/mantaprint/prototype-ack.json."
+    "New home: github.com/mantaplex/mantaprint-prototype. All updater and documentation links point to the new repository."
   ],
   "components": {
-    "core": "0.3.1",
-    "web": "0.3.1",
-    "frontend": "0.3.1",
+    "core": "0.3.2",
+    "web": "0.3.2",
+    "frontend": "0.3.2",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-29
+
+### Fixed
+- **Installer could hang while fetching HP LaserJet firmware.** The `foo2zjs getweb` step downloads firmware for seven LaserJet models from third-party mirrors with no timeout and with its output hidden, so an unreachable mirror froze the installation at "Provisioning HP LaserJet cold firmware" with no indication of what was happening. Each download is now capped at 60 seconds, progress is printed per model, failures are listed as warnings in the final report, and the whole step can be skipped with `MANTAPRINT_SKIP_HP_FIRMWARE=1` (the firmware can be provisioned later from Admin → Printers). The NodeSource download also has a 120 second cap.
+
+---
+
 ## [0.3.1] - 2026-09-29
 
 ### Fixed

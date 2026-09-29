@@ -7,174 +7,610 @@
       "kind": "mfp",
       "vendor": "Canon",
       "family": "PIXMA G3030 series (G1010/G2010/G2020/G3010/G3020/G3030)",
-      "match": { "usb_vendor": "04a9", "usb_products": ["18da", "18ea", "18b7"], "model": "(G3030|G3020|G3010|G2020|G2010|G1020|G1010)" },
-      "print": { "how": "driverless", "note": "IPP-over-USB via ipp-usb, CUPS Everywhere" },
-      "scan": { "how": "escl", "note": "eSCL via ipp-usb (sane-airscan)" },
-      "status": "verified"
+      "match": {
+        "usb_vendor": "04a9",
+        "usb_products": [
+          "18da",
+          "18ea",
+          "18b7"
+        ],
+        "model": "(G3030|G3020|G3010|G2020|G2010|G1020|G1010)"
+      },
+      "print": {
+        "how": "driverless",
+        "note": "IPP-over-USB via ipp-usb, CUPS Everywhere"
+      },
+      "scan": {
+        "how": "escl",
+        "note": "eSCL via ipp-usb (sane-airscan)"
+      },
+      "status": "verified",
+      "apt": [
+        "ipp-usb",
+        "sane-airscan"
+      ],
+      "models": [
+        "G1010",
+        "G1020",
+        "G2010",
+        "G2020",
+        "G3010",
+        "G3020",
+        "G3030"
+      ]
     },
     {
       "id": "canon-lbp6030-ufr2lt",
       "kind": "printer",
       "vendor": "Canon",
       "family": "LBP6030 / LBP6040 / LBP6018 / LBP6230 / LBP112 / LBP113w / LBP151dw / LBP7110Cw (UFR II LT)",
-      "match": { "usb_vendor": "04a9", "model": "LBP(6030|6040|6018|6230|6200|112|113|151|7110|8100)" },
-      "print": { "how": "vendor_deb", "package": "cnrdrvcups-ufr2lt-uk", "note": "Canon UFR II LT (rastertosfp)" },
-      "requires": [{ "kind": "deb", "package": "cnrdrvcups-ufr2lt-uk", "arch": ["arm64", "amd64"], "download": "https://www.canon-europe.com/support/", "note": "Canon's proprietary UFR II LT driver. Download the Linux .deb for your architecture from Canon's support site and upload it here." }],
+      "match": {
+        "usb_vendor": "04a9",
+        "model": "LBP(6030|6040|6018|6230|6200|112|113|151|7110|8100)"
+      },
+      "print": {
+        "how": "vendor_deb",
+        "package": "cnrdrvcups-ufr2lt-uk",
+        "note": "Canon UFR II LT (rastertosfp)"
+      },
+      "requires": [
+        {
+          "kind": "deb",
+          "package": "cnrdrvcups-ufr2lt-uk",
+          "arch": [
+            "arm64",
+            "amd64"
+          ],
+          "download": "https://www.canon-europe.com/support/",
+          "note": "Canon's proprietary UFR II LT driver. Download the Linux .deb for your architecture from Canon's support site and upload it here."
+        }
+      ],
       "status": "verified",
-      "note": "LBP6030 verified on hub hardware. The Canon driver package is licensed for the user's own machines only, so the hub can't ship it: upload it once."
+      "note": "LBP6030 verified on hub hardware. The Canon driver package is licensed for the user's own machines only, so the hub can't ship it: upload it once.",
+      "apt": [],
+      "models": [
+        "LBP6030",
+        "LBP6030w",
+        "LBP6030B",
+        "LBP6040",
+        "LBP6018L",
+        "LBP6018w",
+        "LBP6230dn",
+        "LBP6230dw",
+        "LBP6200d",
+        "LBP112",
+        "LBP113w",
+        "LBP151dw",
+        "LBP7110Cw",
+        "LBP8100n"
+      ]
     },
     {
       "id": "canon-capt",
       "kind": "printer",
       "vendor": "Canon",
       "family": "LBP2900 / LBP3000 / LBP3010 / LBP3018 / LBP3050 / LBP6000 / LBP6018 (CAPT)",
-      "match": { "usb_vendor": "04a9", "model": "LBP(2900|3000|3010|3018|3050|6000\\b|6018\\b)" },
-      "print": { "how": "bundled", "package": "captdriver", "note": "Open-source captdriver (rastertocapt), compiled by install.sh" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "04a9",
+        "model": "LBP(2900|3000|3010|3018|3050|6000\\b|6018\\b)"
+      },
+      "print": {
+        "how": "bundled",
+        "package": "captdriver",
+        "note": "Open-source captdriver (rastertocapt), compiled by install.sh"
+      },
+      "status": "available",
+      "apt": [],
+      "models": [
+        "LBP2900",
+        "LBP2900B",
+        "LBP3000",
+        "LBP3010",
+        "LBP3018",
+        "LBP3050",
+        "LBP6000",
+        "LBP6018"
+      ]
     },
     {
       "id": "canon-lide",
       "kind": "scanner",
       "vendor": "Canon",
       "family": "CanoScan LiDE 100 / 110 / 120 / 300",
-      "match": { "usb_vendor": "04a9", "usb_products": ["1904", "1909", "190e", "1913"], "model": "LiDE\\s*(100|110|120|300)" },
-      "scan": { "how": "sane", "backend": "genesys / pixma" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "04a9",
+        "usb_products": [
+          "1904",
+          "1909",
+          "190e",
+          "1913"
+        ],
+        "model": "LiDE\\s*(100|110|120|300)"
+      },
+      "scan": {
+        "how": "sane",
+        "backend": "genesys / pixma"
+      },
+      "status": "available",
+      "apt": [
+        "sane-utils"
+      ],
+      "models": [
+        "CanoScan LiDE 100",
+        "LiDE 110",
+        "LiDE 120",
+        "LiDE 300"
+      ]
     },
     {
       "id": "fujitsu-scansnap-rom",
       "kind": "scanner",
-      "vendor": "Fujitsu / Ricoh",
-      "family": "ScanSnap iX500 / iX1500, fi-6110",
-      "match": { "usb_vendor": "04c5", "usb_products": ["132b", "159f", "1175"], "model": "(iX500|iX1500|fi-?6110)" },
-      "scan": { "how": "sane", "backend": "fujitsu" },
-      "status": "available"
+      "vendor": "Fujitsu",
+      "family": "ScanSnap iX500 / iX1500, fi-6110 (Fujitsu / Ricoh)",
+      "match": {
+        "usb_vendor": "04c5",
+        "usb_products": [
+          "132b",
+          "159f",
+          "1175"
+        ],
+        "model": "(iX500|iX1500|fi-?6110)"
+      },
+      "scan": {
+        "how": "sane",
+        "backend": "fujitsu"
+      },
+      "status": "available",
+      "apt": [
+        "sane-utils"
+      ],
+      "models": [
+        "ScanSnap iX500",
+        "ScanSnap iX1500",
+        "fi-6110",
+        "fi-7160",
+        "fi-6130Z"
+      ]
     },
     {
       "id": "fujitsu-scansnap-epjitsu",
       "kind": "scanner",
       "vendor": "Fujitsu",
       "family": "ScanSnap S300 / S1100 / S1300 / S1300i, fi-60F / fi-65F",
-      "match": { "usb_vendor": "04c5", "usb_products": ["1156", "11ed", "128d", "1174", "10fe", "1150"], "model": "(S300|S1100|S1300|fi-?60F|fi-?65F)" },
-      "scan": { "how": "sane", "backend": "epjitsu" },
-      "requires": [{ "kind": "nal", "note": "Firmware (.nal) from Fujitsu's ScanSnap software; the hub finds it inside the installer you upload." }],
-      "status": "needs_file"
+      "match": {
+        "usb_vendor": "04c5",
+        "usb_products": [
+          "1156",
+          "11ed",
+          "128d",
+          "1174",
+          "10fe",
+          "1150"
+        ],
+        "model": "(S300|S1100|S1300|fi-?60F|fi-?65F)"
+      },
+      "scan": {
+        "how": "sane",
+        "backend": "epjitsu"
+      },
+      "requires": [
+        {
+          "kind": "nal",
+          "note": "Firmware (.nal) from Fujitsu's ScanSnap software; the hub finds it inside the installer you upload."
+        }
+      ],
+      "status": "needs_file",
+      "apt": [
+        "sane-utils"
+      ],
+      "models": [
+        "ScanSnap S300",
+        "S1100",
+        "S1100i",
+        "S1300",
+        "S1300i",
+        "fi-60F",
+        "fi-65F"
+      ]
     },
     {
       "id": "fujitsu-sv600",
       "kind": "scanner",
       "vendor": "Fujitsu",
       "family": "ScanSnap SV600",
-      "match": { "usb_vendor": "04c5", "usb_products": ["128e"], "model": "SV600" },
+      "match": {
+        "usb_vendor": "04c5",
+        "usb_products": [
+          "128e"
+        ],
+        "model": "SV600"
+      },
       "status": "unsupported",
-      "note": "No Linux/SANE driver exists for the overhead camera; needs Fujitsu's Windows/macOS software."
+      "note": "No Linux/SANE driver exists for the overhead camera; needs Fujitsu's Windows/macOS software.",
+      "apt": [],
+      "models": [
+        "ScanSnap SV600"
+      ]
     },
     {
       "id": "epson-ds-410",
       "kind": "scanner",
       "vendor": "Epson",
       "family": "WorkForce DS-410 / DS-530 / DS-570W",
-      "match": { "usb_vendor": "04b8", "usb_products": ["1138"], "model": "DS-?(410|530|570)" },
-      "scan": { "how": "vendor_deb", "backend": "utsushi / epsonscan2" },
-      "requires": [{ "kind": "deb", "package": "epsonscan2", "arch": ["arm64", "amd64"], "download": "https://support.epson.net/linux/en/epsonscan2.php", "note": "Epson Scan 2 (or utsushi) Linux package for your architecture." }],
-      "status": "needs_file"
+      "match": {
+        "usb_vendor": "04b8",
+        "usb_products": [
+          "1138"
+        ],
+        "model": "DS-?(410|530|570)"
+      },
+      "scan": {
+        "how": "vendor_deb",
+        "backend": "utsushi / epsonscan2"
+      },
+      "requires": [
+        {
+          "kind": "deb",
+          "package": "epsonscan2",
+          "arch": [
+            "arm64",
+            "amd64"
+          ],
+          "download": "https://support.epson.net/linux/en/epsonscan2.php",
+          "note": "Epson Scan 2 (or utsushi) Linux package for your architecture."
+        }
+      ],
+      "status": "needs_file",
+      "apt": [
+        "sane-utils"
+      ],
+      "models": [
+        "WorkForce DS-410",
+        "DS-530",
+        "DS-570W"
+      ]
     },
     {
       "id": "epson-ecotank-escpr",
       "kind": "printer",
       "vendor": "Epson",
       "family": "EcoTank L-series, M-series, WorkForce, Stylus Photo (ESC/P-R)",
-      "match": { "usb_vendor": "04b8", "model": "(^|\\s)(epson\\s+)?(L\\d{3,4}|M\\d{3,4}|WF-\\d{4}|ET-\\d{4})\\b" },
-      "print": { "how": "package", "package": "printer-driver-escpr", "note": "Epson ESC/P-R; some models fall back to Gutenprint" },
-      "scan": { "how": "sane", "backend": "epson2 / escl", "note": "Flatbed on L3xxx MFPs; not hardware-tested" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "04b8",
+        "model": "(^|\\s)(epson\\s+)?(L\\d{3,4}|M\\d{3,4}|WF-\\d{4}|ET-\\d{4})\\b"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-escpr",
+        "note": "Epson ESC/P-R; some models fall back to Gutenprint"
+      },
+      "scan": {
+        "how": "sane",
+        "backend": "epson2 / escl",
+        "note": "Flatbed on L3xxx MFPs; not hardware-tested"
+      },
+      "status": "available",
+      "apt": [
+        "printer-driver-escpr",
+        "printer-driver-gutenprint",
+        "sane-airscan"
+      ],
+      "models": [
+        "L120",
+        "L210",
+        "L220",
+        "L310",
+        "L360",
+        "L380",
+        "L1110",
+        "L3110",
+        "L3150",
+        "L3210",
+        "L3250",
+        "L4150",
+        "L5190",
+        "L6190",
+        "M100",
+        "M1120",
+        "M2140",
+        "L805",
+        "L1800",
+        "WF-2830",
+        "WF-3720",
+        "WF-7710"
+      ]
     },
     {
       "id": "hp-laserjet-hostbased-firmware",
       "kind": "printer",
       "vendor": "HP",
       "family": "LaserJet 1000 / 1005 / 1018 / 1020 / P1005 / P1006 / P1007 / P1008 / P1505 (host-based, firmware on every power-on)",
-      "match": { "usb_vendor": "03f0", "model": "LaserJet (1000|1005|1018|1020|P1005|P1006|P1007|P1008|P1505)\\b" },
-      "print": { "how": "package", "package": "printer-driver-foo2zjs", "note": "foo2zjs; the hub uploads the firmware on each power-on" },
-      "requires": [{ "kind": "dl", "note": "HP firmware (sihpXXXX.dl). install.sh fetches it when online (foo2zjs getweb); otherwise upload the .dl file here." }],
-      "status": "needs_file"
+      "match": {
+        "usb_vendor": "03f0",
+        "model": "LaserJet (1000|1005|1018|1020|P1005|P1006|P1007|P1008|P1505)\\b"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-foo2zjs",
+        "note": "foo2zjs; the hub uploads the firmware on each power-on"
+      },
+      "requires": [
+        {
+          "kind": "dl",
+          "note": "HP firmware (sihpXXXX.dl). install.sh fetches it when online (foo2zjs getweb); otherwise upload the .dl file here."
+        }
+      ],
+      "status": "needs_file",
+      "apt": [
+        "printer-driver-foo2zjs"
+      ],
+      "models": [
+        "LaserJet 1000",
+        "1005",
+        "1018",
+        "1020",
+        "P1005",
+        "P1006",
+        "P1007",
+        "P1008",
+        "P1505"
+      ]
     },
     {
       "id": "hp-mfp-hplip-plugin",
       "kind": "mfp",
       "vendor": "HP",
       "family": "LaserJet Pro MFP M130 / M227, DeskJet, OfficeJet, Smart Tank MFPs (HPLIP + plugin)",
-      "match": { "usb_vendor": "03f0", "model": "(MFP|DeskJet|OfficeJet|Smart Tank|ENVY)" },
-      "print": { "how": "package", "package": "printer-driver-hpcups", "note": "HPLIP hpcups" },
-      "scan": { "how": "sane", "backend": "hpaio" },
-      "requires": [{ "kind": "hplip-plugin", "download": "https://developers.hp.com/hp-linux-imaging-and-printing/plugins", "note": "HP's proprietary plugin (hplip-<version>-plugin.run); required for scanning on most HP MFPs." }],
-      "status": "needs_file"
+      "match": {
+        "usb_vendor": "03f0",
+        "model": "(MFP|DeskJet|OfficeJet|Smart Tank|ENVY)"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-hpcups",
+        "note": "HPLIP hpcups"
+      },
+      "scan": {
+        "how": "sane",
+        "backend": "hpaio"
+      },
+      "requires": [
+        {
+          "kind": "hplip-plugin",
+          "download": "https://developers.hp.com/hp-linux-imaging-and-printing/plugins",
+          "note": "HP's proprietary plugin (hplip-<version>-plugin.run); required for scanning on most HP MFPs."
+        }
+      ],
+      "status": "needs_file",
+      "apt": [
+        "hplip",
+        "libsane-hpaio",
+        "printer-driver-hpcups"
+      ],
+      "models": [
+        "LaserJet Pro MFP M130a",
+        "M130nw",
+        "M130fw",
+        "M227fdw",
+        "DeskJet 2130",
+        "DeskJet Ink Advantage",
+        "OfficeJet",
+        "Smart Tank 500",
+        "Smart Tank 515",
+        "ENVY"
+      ]
     },
     {
       "id": "hp-laserjet-pcl-ps",
       "kind": "printer",
       "vendor": "HP",
       "family": "LaserJet Pro / Enterprise (PCL / PostScript)",
-      "match": { "usb_vendor": "03f0", "model": "LaserJet (Pro|Enterprise|4\\d{2}|P\\d{4}|M\\d{3,4})" },
-      "print": { "how": "package", "package": "printer-driver-hpcups / printer-driver-postscript-hp" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "03f0",
+        "model": "LaserJet (Pro|Enterprise|4\\d{2}|P\\d{4}|M\\d{3,4})"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-hpcups / printer-driver-postscript-hp"
+      },
+      "status": "available",
+      "apt": [
+        "printer-driver-hpcups",
+        "printer-driver-postscript-hp"
+      ],
+      "models": [
+        "LaserJet Pro M102a",
+        "M12a",
+        "M15a",
+        "P1102",
+        "M404",
+        "M401",
+        "LaserJet Enterprise"
+      ]
     },
     {
       "id": "brother-brlaser",
       "kind": "printer",
       "vendor": "Brother",
       "family": "HL-1xxx, HL-L2xxx, DCP-1xxx, DCP-L25xx (brlaser)",
-      "match": { "usb_vendor": "04f9", "model": "(HL-1|HL-L2|DCP-1|DCP-L25|MFC-L2)" },
-      "print": { "how": "package", "package": "printer-driver-brlaser" },
-      "scan": { "how": "sane", "backend": "brother4 / escl", "note": "Brother's brscan4 .deb is needed for most USB scanning" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "04f9",
+        "model": "(HL-1|HL-L2|DCP-1|DCP-L25|MFC-L2)"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-brlaser"
+      },
+      "scan": {
+        "how": "sane",
+        "backend": "brother4 / escl",
+        "note": "Brother's brscan4 .deb is needed for most USB scanning"
+      },
+      "status": "available",
+      "apt": [
+        "printer-driver-brlaser",
+        "sane-airscan"
+      ],
+      "models": [
+        "HL-1110",
+        "HL-1210W",
+        "HL-L2320D",
+        "HL-L2350DW",
+        "HL-L2370DW",
+        "DCP-1510",
+        "DCP-1610W",
+        "DCP-L2520DW",
+        "DCP-L2540DW",
+        "MFC-L2700DW"
+      ]
     },
     {
       "id": "brother-inktank",
       "kind": "mfp",
       "vendor": "Brother",
       "family": "DCP-T310 / T420W / T520W, MFC-T920DW (ink tank)",
-      "match": { "usb_vendor": "04f9", "model": "(DCP-T|MFC-T)\\d{3}" },
-      "print": { "how": "vendor_deb", "note": "Brother's own printer .deb; brlaser covers only Brother's laser line" },
-      "scan": { "how": "vendor_deb", "backend": "brscan4" },
-      "requires": [{ "kind": "deb", "package": "brscan4 / <model>lpr", "arch": ["arm64", "amd64", "armhf"], "download": "https://support.brother.com/", "note": "Brother Linux driver packages (printer LPR .deb and brscan4 .deb)." }],
-      "status": "needs_file"
+      "match": {
+        "usb_vendor": "04f9",
+        "model": "(DCP-T|MFC-T)\\d{3}"
+      },
+      "print": {
+        "how": "vendor_deb",
+        "note": "Brother's own printer .deb; brlaser covers only Brother's laser line"
+      },
+      "scan": {
+        "how": "vendor_deb",
+        "backend": "brscan4"
+      },
+      "requires": [
+        {
+          "kind": "deb",
+          "package": "brscan4 / <model>lpr",
+          "arch": [
+            "arm64",
+            "amd64",
+            "armhf"
+          ],
+          "download": "https://support.brother.com/",
+          "note": "Brother Linux driver packages (printer LPR .deb and brscan4 .deb)."
+        }
+      ],
+      "status": "needs_file",
+      "apt": [],
+      "models": [
+        "DCP-T310",
+        "DCP-T420W",
+        "DCP-T520W",
+        "MFC-T920DW"
+      ]
     },
     {
       "id": "samsung-xerox-splix",
       "kind": "printer",
       "vendor": "Samsung / Xerox",
       "family": "Samsung ML / SCX / Xpress, Xerox Phaser 3xxx (SPL)",
-      "match": { "usb_vendor": "04e8|0924", "model": "(ML-|SCX-|Xpress|Phaser 3|WorkCentre 30)" },
-      "print": { "how": "package", "package": "printer-driver-splix" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "04e8|0924",
+        "model": "(ML-|SCX-|Xpress|Phaser 3|WorkCentre 30)"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-splix"
+      },
+      "status": "available",
+      "apt": [
+        "printer-driver-splix"
+      ],
+      "models": [
+        "ML-1640",
+        "ML-1660",
+        "ML-2160",
+        "ML-2165",
+        "SCX-3200",
+        "SCX-3400",
+        "SCX-4623",
+        "Xpress M2020",
+        "Xpress M2070",
+        "Phaser 3020",
+        "Phaser 3117",
+        "Phaser 3140",
+        "WorkCentre 3025"
+      ]
     },
     {
       "id": "fujixerox-docuprint",
       "kind": "printer",
       "vendor": "Fuji Xerox",
       "family": "DocuPrint P115w / M115w / CP105b / CM205b",
-      "match": { "usb_vendor": "0550", "model": "DocuPrint" },
-      "print": { "how": "package", "package": "printer-driver-fujixerox" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "0550",
+        "model": "DocuPrint"
+      },
+      "print": {
+        "how": "package",
+        "package": "printer-driver-fujixerox"
+      },
+      "status": "available",
+      "apt": [
+        "printer-driver-fujixerox"
+      ],
+      "models": [
+        "DocuPrint P115w",
+        "M115w",
+        "CP105b",
+        "CM205b"
+      ]
     },
     {
       "id": "pos-thermal-raw",
       "kind": "printer",
       "vendor": "Various",
       "family": "ESC/POS receipt printers (Epson TM, Xprinter, Iware, generic 58/80 mm)",
-      "match": { "model": "(TM-|XP-|POS-?\\d|58mm|80mm|receipt|thermal)" },
-      "print": { "how": "raw", "note": "Raw queue; the app sends ESC/POS bytes" },
-      "status": "available"
+      "match": {
+        "model": "(TM-|XP-|POS-?\\d|58mm|80mm|receipt|thermal)"
+      },
+      "print": {
+        "how": "raw",
+        "note": "Raw queue; the app sends ESC/POS bytes"
+      },
+      "status": "available",
+      "apt": [],
+      "models": [
+        "Epson TM-T82",
+        "TM-T88",
+        "Xprinter XP-58",
+        "XP-80",
+        "Iware",
+        "generic 58 mm",
+        "generic 80 mm"
+      ]
     },
     {
       "id": "zebra-dymo-ptouch",
       "kind": "printer",
       "vendor": "Zebra / Dymo / Brother P-touch",
       "family": "Label printers (ZPL/EPL, Dymo LabelWriter, P-touch)",
-      "match": { "usb_vendor": "0a5f|0922|04f9", "model": "(ZTC|ZD|GK|GX|LabelWriter|PT-|QL-)" },
-      "print": { "how": "package", "package": "cups sample.drv / printer-driver-dymo / printer-driver-ptouch" },
-      "status": "available"
+      "match": {
+        "usb_vendor": "0a5f|0922|04f9",
+        "model": "(ZTC|ZD|GK|GX|LabelWriter|PT-|QL-)"
+      },
+      "print": {
+        "how": "package",
+        "package": "cups sample.drv / printer-driver-dymo / printer-driver-ptouch"
+      },
+      "status": "available",
+      "apt": [
+        "printer-driver-dymo",
+        "printer-driver-ptouch"
+      ],
+      "models": [
+        "Zebra ZD220",
+        "ZD420",
+        "GK420",
+        "GX430",
+        "Dymo LabelWriter 450",
+        "Brother PT-P700",
+        "QL-800"
+      ]
     }
   ]
 }

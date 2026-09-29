@@ -3941,9 +3941,9 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/drivers/apt/install' && req.method === 'POST') {
       if (!isAdminAuthenticated(req)) return denyAdmin(res);
       const body = await readJsonBody(req).catch(() => ({}));
-      const pkg = String(body.package || '');
-      if (!driverCenter.isAllowedPackage(pkg)) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'not_allowed' })); }
-      const job = driverCenter.startJob('apt-install', pkg, async (log) => {
+      const pkg = Array.isArray(body.packages) ? body.packages.map(String) : [String(body.package || '')];
+      if (!pkg.length || !pkg.every(driverCenter.isAllowedPackage)) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'not_allowed' })); }
+      const job = driverCenter.startJob('apt-install', pkg.join(', '), async (log) => {
         const r = await driverCenter.aptInstall(pkg, { log });
         if (r.ok) { runCmd('/usr/bin/python3', [printerManagerScript(), 'sync'], 120000).catch(() => {}); await probeScannerTelemetry(true).catch(() => {}); }
         return r;

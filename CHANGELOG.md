@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-29
+
+### Fixed
+- **Installer risk prompt could not be answered.** The prototype notice was shown in a `whiptail` dialog, which cannot take over the keyboard when the installer's output is piped (for example `sudo ./install.sh | tee install.log`): arrow keys and Enter were echoed as `^[[B` and typing `y` did nothing. The notice is now printed as plain text on the terminal and the `y` / `yes` / `ya` prompt is read from `/dev/tty`, which works with or without a pipe. `--accept-prototype-risk` and `MANTAPRINT_ACCEPT_RISK=yes` are unchanged.
+
+---
+
 ## [0.3.0] - 2026-09-25
 
 **Prototype disclosure release.** MantaPrint is now published as a prototype with its known

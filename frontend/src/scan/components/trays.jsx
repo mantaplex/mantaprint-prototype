@@ -9,16 +9,17 @@ export function ScanTray({ scanner, settings, onChange, onScan, scanning, phase,
   const { t } = useI18n();
   const connected = Boolean(scanner?.connected);
   const needsFirmware = !connected && scanner?.firmware_required;
+  const needsPlugin = !connected && !needsFirmware && scanner?.plugin_required;
   const hasAdf = Boolean(scanner?.has_adf);
   const duplex = Boolean(scanner?.duplex_capable);
 
   return (
     <div className="space-y-4">
-      <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${connected ? 'bg-manta-500/10 border-manta-500/25' : needsFirmware ? 'bg-amber-500/10 border-amber-500/25' : 'bg-white/[0.04] border-white/10'}`}>
-        <span className={`h-2 w-2 rounded-full shrink-0 ${connected ? 'bg-manta-400 animate-pulse' : needsFirmware ? 'bg-amber-400' : 'bg-slate-500'}`} />
+      <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${connected ? 'bg-manta-500/10 border-manta-500/25' : (needsFirmware || needsPlugin) ? 'bg-amber-500/10 border-amber-500/25' : 'bg-white/[0.04] border-white/10'}`}>
+        <span className={`h-2 w-2 rounded-full shrink-0 ${connected ? 'bg-manta-400 animate-pulse' : (needsFirmware || needsPlugin) ? 'bg-amber-400' : 'bg-slate-500'}`} />
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-bold text-slate-100 truncate">{connected ? (scanner?.name || t('studio.scanner.connected')) : needsFirmware ? t('studio.scanner.needsFirmware', { model: needsFirmware.model }) : t('studio.scanner.notConnected')}</div>
-          <div className={`text-[10px] text-slate-500 ${needsFirmware ? '' : 'truncate'}`}>{connected ? `${scanner?.driver || 'SANE'} · ${(scanner?.sources || ['Flatbed']).join(' / ')}` : needsFirmware ? t('studio.scanner.needsFirmwareHint') : t('studio.scanner.notConnectedHint')}</div>
+          <div className="text-xs font-bold text-slate-100 truncate">{connected ? (scanner?.name || t('studio.scanner.connected')) : needsFirmware ? t('studio.scanner.needsFirmware', { model: needsFirmware.model }) : needsPlugin ? t('studio.scanner.needsPlugin', { model: needsPlugin.model }) : t('studio.scanner.notConnected')}</div>
+          <div className={`text-[10px] text-slate-500 ${(needsFirmware || needsPlugin) ? '' : 'truncate'}`}>{connected ? `${scanner?.driver || 'SANE'} · ${(scanner?.sources || ['Flatbed']).join(' / ')}` : needsFirmware ? t('studio.scanner.needsFirmwareHint') : needsPlugin ? t('studio.scanner.needsPluginHint') : t('studio.scanner.notConnectedHint')}</div>
         </div>
         <button type="button" onClick={onRefreshScanner} className="text-[11px] font-semibold text-manta-300 hover:text-manta-200 px-2 h-8 rounded-lg hover:bg-white/5">{t('common.refresh')}</button>
       </div>

@@ -63,6 +63,9 @@ export default function Overview({ data, refresh, showToast, go }) {
   if (!scanner?.connected && scanner?.firmware_required) {
     attention.push({ icon: ScanLine, tone: 'warn', title: t('adm.overview.attn.scannerFirmware', { model: scanner.firmware_required.model }), desc: t('adm.overview.attn.scannerFirmwareDesc'), action: () => go('scanner') });
   }
+  if (!scanner?.connected && scanner?.plugin_required) {
+    attention.push({ icon: ScanLine, tone: 'warn', title: t('adm.overview.attn.scannerPlugin', { model: scanner.plugin_required.model }), desc: t('adm.overview.attn.scannerPluginDesc'), action: () => go('scanner') });
+  }
   for (const s of SERVICES) {
     if (s.key !== 'ipp_usb' && services[s.key] === false) attention.push({ icon: Server, tone: 'danger', title: t('adm.overview.attn.service', { name: s.label }), desc: t('adm.overview.attn.serviceDesc'), action: null });
   }
@@ -91,7 +94,7 @@ export default function Overview({ data, refresh, showToast, go }) {
       <div className="grid gap-3 grid-cols-2 xl:grid-cols-4 [&>*]:min-w-0">
         <Stat icon={Printer} label={t('adm.nav.printers')} value={`${online.length} / ${printers.length}`} tone={online.length ? 'ok' : 'idle'} detail={online.length ? t('adm.overview.online') : t('adm.overview.noneOnline')} onClick={() => go('printers')} />
         <Stat icon={ListChecks} label={t('adm.nav.queue')} value={String(activeJobs)} tone={activeJobs ? 'info' : 'idle'} detail={activeJobs ? t('adm.overview.printing') : t('adm.overview.idle')} onClick={() => go('queue')} />
-        <Stat icon={ScanLine} label={t('adm.nav.scanner')} value={scanner?.connected ? (scanner.name || '—') : scanner?.firmware_required ? scanner.firmware_required.model : t('adm.overview.notDetected')} tone={scanner?.connected ? 'ok' : scanner?.firmware_required ? 'warn' : 'idle'} detail={scanner?.connected ? t('adm.overview.ready') : scanner?.firmware_required ? t('adm.overview.needsFirmware') : t('adm.overview.offline')} onClick={() => go('scanner')} />
+        <Stat icon={ScanLine} label={t('adm.nav.scanner')} value={scanner?.connected ? (scanner.name || '—') : scanner?.firmware_required ? scanner.firmware_required.model : scanner?.plugin_required ? scanner.plugin_required.model : t('adm.overview.notDetected')} tone={scanner?.connected ? 'ok' : (scanner?.firmware_required || scanner?.plugin_required) ? 'warn' : 'idle'} detail={scanner?.connected ? t('adm.overview.ready') : scanner?.firmware_required ? t('adm.overview.needsFirmware') : scanner?.plugin_required ? t('adm.overview.needsPlugin') : t('adm.overview.offline')} onClick={() => go('scanner')} />
         <Stat icon={Wifi} label={t('adm.nav.network')} value={sys.ip || '—'} tone={sys.ip ? 'ok' : 'warn'} detail={sys.broadcast_network?.iface || sys.mdns_host || '—'} onClick={() => go('network')} />
       </div>
 
@@ -150,7 +153,8 @@ export default function Overview({ data, refresh, showToast, go }) {
                     <div className="text-sm font-semibold text-slate-100">{s.label}</div>
                     <div className="text-xs text-slate-500">{t(`adm.overview.svc.${s.descKey}`)}</div>
                   </div>
-                  <StatusPill tone={up ? 'ok' : up === false ? 'danger' : 'idle'}>{up ? t('adm.overview.running') : t('adm.overview.stopped')}</StatusPill>
+                  {/* ipp-usb is started by udev only while an IPP-over-USB device is plugged in, so "stopped" is its normal idle state. */}
+                  <StatusPill tone={up ? 'ok' : s.key === 'ipp_usb' ? 'idle' : up === false ? 'danger' : 'idle'}>{up ? t('adm.overview.running') : s.key === 'ipp_usb' ? t('adm.overview.standby') : t('adm.overview.stopped')}</StatusPill>
                   <Button size="sm" variant="ghost" icon={restarting === s.key ? Loader2 : RefreshCw} disabled={Boolean(restarting)} onClick={() => restart(s)}>{t('adm.overview.restart')}</Button>
                 </div>
               );

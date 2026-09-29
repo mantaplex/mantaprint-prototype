@@ -17,7 +17,8 @@ const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 
 // Optional custom titles. Tags not listed here get "MantaPrint Prototype <tag>".
 const RELEASE_TITLES = {
-  'v0.3.0': 'MantaPrint Prototype v0.3.0 - Prototype Disclosure, New Repository & Installer Risk Acknowledgement'
+  'v0.3.0': 'MantaPrint Prototype v0.3.0 - Prototype Disclosure, New Repository & Installer Risk Acknowledgement',
+  'v0.3.5': 'MantaPrint Prototype v0.3.5 - Driver Center, HP Scanner Plugin & Lockdown Mode'
 };
 
 // Every release of this repository is a prototype build. This notice leads every release body.

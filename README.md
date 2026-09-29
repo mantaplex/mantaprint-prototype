@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mantaplex/mantaprint-prototype/releases"><img src="https://img.shields.io/badge/version-v0.3.10-blue.svg?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mantaplex/mantaprint-prototype/releases"><img src="https://img.shields.io/badge/version-v0.3.11-blue.svg?style=flat-square" alt="Version"></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/status-PROTOTYPE%20%E2%80%94%20not%20for%20production-orange.svg?style=flat-square" alt="Status: Prototype"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/arch-ARM64%20%7C%20x86__64-orange.svg?style=flat-square" alt="Architecture">

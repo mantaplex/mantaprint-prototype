@@ -300,8 +300,8 @@ export default function Scanner({ data, showToast, go }) {
             {hp && !needsHp && (
               <SettingRow
                 title={hp.plugin_installed ? t('adm.scanner.hp.installedTitle', { v: hp.plugin_version }) : hp.hplip_installed ? t('adm.scanner.hp.noneInstalled') : t('adm.scanner.hp.noHplip')}
-                description={hp.hplip_installed ? t('adm.scanner.hp.desc', { file: hp.required_file || '' }) : t('adm.scanner.hp.noHplipDesc')}>
-                <HpPluginUpload hp={hp} onDone={load} showToast={showToast} />
+                description={hp.plugin_installed ? t('adm.scanner.hp.installedDesc') : hp.hplip_installed ? t('adm.scanner.hp.desc', { file: hp.required_file || '' }) : t('adm.scanner.hp.noHplipDesc')}>
+                {hp.plugin_installed ? <StatusPill tone={hp.plugin_matches === false ? 'warn' : 'ok'}>{hp.plugin_matches === false ? t('adm.scanner.hp.versionOff', { v: hp.plugin_version, h: hp.hplip_version }) : t('adm.scanner.hp.installedPill')}</StatusPill> : <HpPluginUpload hp={hp} onDone={load} showToast={showToast} />}
               </SettingRow>
             )}
           </List>

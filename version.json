@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "semantic": {
     "major": 0,
     "minor": 3,
-    "patch": 10
+    "patch": 11
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.3.10"
+    "tag": "v0.3.11"
   },
   "build": {
-    "timestamp": "2026-09-29T18:00:00Z",
+    "timestamp": "2026-09-29T19:00:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,14 +22,14 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Fix: Admin > Scanner no longer offers the HP plugin upload after the plugin is installed; the row shows an Installed pill instead.",
     "Drivers & devices: steps that need several files (HP plugin .asc + .run, HP LaserJet .dl per model, ScanSnap .nal per scanner) show one row per file with its own upload button and a check mark once it is on the hub.",
-    "Fix: uploading the HPLIP plugin's .asc signature before the .run failed with 'Upload failed' (its folder did not exist yet).",
-    "Fix: uploading the HPLIP plugin hung at 'Checking file' forever (hp-plugin's license prompt looped on a closed stdin); hp-plugin now runs under a pseudo-terminal as a background job with a live log."
+    "Fix: uploading the HPLIP plugin's .asc signature before the .run failed with 'Upload failed' (its folder did not exist yet)."
   ],
   "components": {
-    "core": "0.3.10",
-    "web": "0.3.10",
-    "frontend": "0.3.10",
+    "core": "0.3.11",
+    "web": "0.3.11",
+    "frontend": "0.3.11",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

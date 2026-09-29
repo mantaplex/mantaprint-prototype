@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.11] - 2026-09-29
+
+### Fixed
+- **Admin → Scanner kept offering the HP plugin upload after the plugin was installed.** The "HP plugin x.y.z installed" row now shows an *Installed* pill (or a version-mismatch warning) instead of the *.asc* / *.run* buttons; uploads stay on Drivers & devices, where the plugin step is already checked off.
+
+---
+
 ## [0.3.10] - 2026-09-29
 
 ### Changed

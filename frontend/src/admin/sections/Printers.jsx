@@ -37,7 +37,9 @@ export function readinessStatus(p, t) {
 // English text — translated here so the reason reads correctly in both EN and ID.
 export function readinessReasonText(p, t) {
   if (!p.readiness_reason) return t('adm.printers.readiness.genericDesc');
-  return t(`adm.printers.readiness.reasons.${p.readiness_reason}`, { detail: p.readiness_detail || '' });
+  const key = `adm.printers.readiness.reasons.${p.readiness_reason}`;
+  const text = t(key, { detail: p.readiness_detail || '' });
+  return text === key ? t('adm.printers.readiness.genericDesc') : text;
 }
 
 function PrinterSheet({ printer, broadcastName, onClose, refresh, showToast, go }) {

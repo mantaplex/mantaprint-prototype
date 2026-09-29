@@ -422,7 +422,8 @@ export async function assignPpdToQueue(queue, ppdPath) {
   return { ok: r.code === 0, tail: (r.stdout + r.stderr).trim().slice(-300) };
 }
 
-export function installDl(filePath, fileName, { dirs = FOO2ZJS_FW_DIRS } = {}) {
+export function installDl(filePath, fileName, { dirs } = {}) {
+  dirs = dirs || [...new Set([hpFirmwareCacheDir(), ...FOO2ZJS_FW_DIRS])];
   const name = path.basename(fileName).toLowerCase();
   if (!/^sihp[a-z0-9]{4,6}\.dl$/.test(name)) return { ok: false, code: 'bad_name' };
   const size = fs.statSync(filePath).size;
@@ -513,4 +514,204 @@ export function dropPending(id) {
   pending.delete(id);
   try { if (p.workDir) fs.rmSync(p.workDir, { recursive: true, force: true }); } catch {}
   return true;
+}
+
+// ---- setup checklists (what the Drivers & devices page executes) ----------------------
+//
+// A family (catalog entry) or a connected device gets an ordered list of steps, each with a
+// status and the action that completes it. Pure functions: the route gathers the facts
+// (installed packages, HP plugin state, ScanSnap firmware, HP firmware files, connected
+// devices) and the browser only renders and triggers actions.
+
+/** getweb model key -> firmware file (mirrors HP_FIRMWARE_MODELS in printer_manager.py). */
+export const HP_FIRMWARE = {
+  '1000': 'sihp1000.dl', '1005': 'sihp1005.dl', '1018': 'sihp1018.dl', '1020': 'sihp1020.dl',
+  P1005: 'sihpP1005.dl', P1007: 'sihpP1005.dl', P1006: 'sihpP1006.dl', P1008: 'sihpP1006.dl', P1505: 'sihpP1505.dl'
+};
+export const HP_FIRMWARE_DIRS = ['/mnt/data/firmware/hp', '/var/cache/mantaprint/firmware/hp', '/usr/share/foo2zjs/firmware', '/etc/foo2zjs/firmware'];
+
+/** Lower-cased names of firmware files present (non-empty) in any of the known directories. */
+export function presentHpFirmware(dirs = HP_FIRMWARE_DIRS) {
+  const out = new Set();
+  for (const dir of dirs) {
+    let entries = [];
+    try { entries = fs.readdirSync(dir); } catch { continue; }
+    for (const f of entries) {
+      try { if (/\.dl$/i.test(f) && fs.statSync(path.join(dir, f)).size > 0) out.add(f.toLowerCase()); } catch {}
+    }
+  }
+  return out;
+}
+
+/** HP firmware cache dir printer_manager.py reads from (MicroSD first). */
+export function hpFirmwareCacheDir() {
+  return fs.existsSync('/mnt/data') ? '/mnt/data/firmware/hp' : '/var/cache/mantaprint/firmware/hp';
+}
+
+/** "brscan4 / <model>lpr" -> "brscan4"; null when the requirement names no package. */
+export function requiredPackageName(req) {
+  const first = String(req?.package || '').split(/\s*\/\s*/)[0].trim();
+  return /^[a-z0-9][a-z0-9+.-]*$/.test(first) ? first : null;
+}
+
+/** Every dpkg package name the checklists need to know the state of. */
+export function allPackageNames(recipes) {
+  const names = new Set(APT_ALLOWLIST.map((p) => p.name));
+  for (const r of recipes) {
+    for (const p of r.apt || []) names.add(p);
+    for (const req of r.requires || []) { const n = requiredPackageName(req); if (n) names.add(n); }
+  }
+  return [...names];
+}
+
+const SETUP_KINDS = new Set(['packages', 'deb', 'plugin', 'nal', 'dl', 'ppd']);
+
+function summarize(recipeStatus, steps) {
+  if (recipeStatus === 'unsupported') return { state: 'unsupported', todo: 0 };
+  const todo = steps.filter((s) => SETUP_KINDS.has(s.kind) && (s.status === 'todo' || s.status === 'blocked')).length;
+  return { state: todo ? 'setup' : 'ready', todo };
+}
+
+function hpFirmwareModels(recipe, hpfw) {
+  const out = [];
+  for (const m of recipe.models || []) {
+    const key = Object.keys(HP_FIRMWARE).find((k) => new RegExp(`(^|\\s)${k}$`, 'i').test(m));
+    if (!key) continue;
+    const file = HP_FIRMWARE[key];
+    if (out.some((x) => x.filename === file)) { out.find((x) => x.filename === file).models.push(m); continue; }
+    out.push({ key, filename: file, models: [m], present: hpfw.has(file.toLowerCase()) });
+  }
+  return out;
+}
+
+/**
+ * Steps for a catalog family. facts: { installed:Set, hplip, nal:{devices:[]}, hpfw:Set,
+ * devices:[connected devices matched to this family] }.
+ */
+export function familySteps(recipe, facts = {}) {
+  const installed = facts.installed || new Set();
+  const hplip = facts.hplip || {};
+  const nalDevices = facts.nal?.devices || [];
+  const hpfw = facts.hpfw || new Set();
+  const devices = facts.devices || [];
+  const steps = [];
+
+  if (recipe.status === 'unsupported') {
+    steps.push({ id: 'unsupported', kind: 'unsupported', status: 'info', note: recipe.note || '', actions: [] });
+    return { steps, summary: summarize(recipe.status, steps) };
+  }
+
+  const pkgs = recipe.apt || [];
+  if (pkgs.length) {
+    const missing = pkgs.filter((p) => !installed.has(p));
+    steps.push({ id: 'packages', kind: 'packages', status: missing.length ? 'todo' : 'done', packages: pkgs, missing, actions: missing.length ? [{ type: 'apt', packages: missing }] : [] });
+  }
+
+  for (const req of recipe.requires || []) {
+    if (req.kind === 'deb') {
+      const pkg = requiredPackageName(req);
+      const done = Boolean(pkg && installed.has(pkg));
+      steps.push({ id: `deb:${pkg || 'vendor'}`, kind: 'deb', status: done ? 'done' : 'todo', package: req.package || '', arch: req.arch || [], download: req.download || null, note: req.note || '', actions: done ? [] : [{ type: 'upload', accept: '.deb', endpoint: '/api/drivers/upload', expect: 'deb' }, ...(req.download ? [{ type: 'link', href: req.download }] : [])] });
+    } else if (req.kind === 'hplip-plugin') {
+      const done = Boolean(hplip.plugin_installed && hplip.plugin_matches !== false);
+      const blocked = !hplip.hplip_installed;
+      steps.push({ id: 'plugin', kind: 'plugin', status: done ? 'done' : blocked ? 'blocked' : 'todo', blocked_by: blocked ? 'packages' : null, required_file: hplip.required_file || 'hplip-<version>-plugin.run', hplip_version: hplip.hplip_version || null, plugin_version: hplip.plugin_version || null, download: req.download || hplip.download_url || null, actions: done || blocked ? [] : [{ type: 'upload', accept: '.run,.asc', endpoint: '/api/drivers/upload', expect: 'hplip-plugin' }, ...(req.download ? [{ type: 'link', href: req.download }] : [])] });
+    } else if (req.kind === 'nal') {
+      const targets = nalDevices.map((d) => ({ model: d.model, filename: d.filename, usb_id: d.usb_id, installed: Boolean(d.installed), connected: Boolean(d.connected) }));
+      const connectedMissing = targets.filter((x) => x.connected && !x.installed);
+      const installedCount = targets.filter((x) => x.installed).length;
+      const status = connectedMissing.length ? 'todo' : installedCount ? 'done' : 'todo';
+      steps.push({ id: 'nal', kind: 'nal', status, targets, actions: status === 'done' ? [] : [{ type: 'upload', accept: '.nal,.zip,.exe,.cab,.msi,.7z,.dmg,.pkg', endpoint: '/api/scanner/firmware', expect: 'nal', target: connectedMissing[0]?.filename || null }] });
+    } else if (req.kind === 'dl') {
+      const models = hpFirmwareModels(recipe, hpfw);
+      const missing = models.filter((m) => !m.present);
+      steps.push({ id: 'dl', kind: 'dl', status: missing.length ? 'todo' : 'done', models, actions: missing.length ? [{ type: 'getweb', models: missing.map((m) => m.key) }, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl' }] : [] });
+    }
+  }
+
+  steps.push({ id: 'connect', kind: 'connect', status: devices.length ? 'done' : 'todo', connected: devices.map((d) => d.name || d.model), actions: [] });
+
+  const setupDone = steps.every((s) => !SETUP_KINDS.has(s.kind) || s.status === 'done');
+  const printers = devices.filter((d) => d.type === 'printer' && d.queue);
+  const scanners = devices.filter((d) => d.type === 'scanner' && d.readiness === 'ready');
+  const verifyActions = [...printers.map((d) => ({ type: 'test-print', queue: d.queue, name: d.name })), ...(scanners.length || recipe.kind === 'scanner' || recipe.kind === 'mfp' ? [{ type: 'open-scan' }] : [])];
+  steps.push({ id: 'verify', kind: 'verify', status: devices.length && setupDone ? 'todo' : 'blocked', actions: devices.length && setupDone ? verifyActions : [] });
+
+  return { steps, summary: summarize(recipe.status, steps) };
+}
+
+/** Steps for one connected device (the family's steps, targeted, plus queue-specific ones). */
+export function deviceSteps(device, recipe, facts = {}) {
+  let steps = [];
+  if (recipe) {
+    steps = familySteps(recipe, { ...facts, devices: [device] }).steps.filter((s) => s.kind !== 'connect');
+    // ScanSnap firmware: only this device's file.
+    const nal = steps.find((s) => s.kind === 'nal');
+    if (nal && device.usb_id) {
+      nal.targets = nal.targets.filter((x) => x.usb_id === device.usb_id);
+      const mine = nal.targets[0];
+      if (mine) { nal.status = mine.installed ? 'done' : 'todo'; nal.actions = mine.installed ? [] : [{ type: 'upload', accept: '.nal,.zip,.exe,.cab,.msi,.7z,.dmg,.pkg', endpoint: '/api/scanner/firmware', expect: 'nal', target: mine.filename }]; }
+    }
+  }
+  const verify = steps.find((s) => s.kind === 'verify');
+  if (verify) steps = steps.filter((s) => s.kind !== 'verify');
+
+  if (device.type === 'printer' && device.queue) {
+    const q = device.queue;
+    // HP host-based firmware: talk about this printer's own file, not the whole family's.
+    const dl = steps.find((s) => s.kind === 'dl');
+    if (dl && dl.models?.length) {
+      const hay = `${device.name || ''} ${device.model || ''}`;
+      const mine = dl.models.filter((m) => m.models.some((name) => new RegExp(`(^|[^0-9a-z])${name.replace(/^laserjet\s+/i, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^0-9a-z]|$)`, 'i').test(hay)));
+      if (mine.length) {
+        dl.models = mine;
+        dl.status = mine.every((m) => m.present) ? 'done' : 'todo';
+        dl.actions = dl.status === 'done' ? [] : [{ type: 'getweb', models: mine.filter((m) => !m.present).map((m) => m.key) }, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl' }];
+      }
+    }
+    if (device.readiness === 'needs_firmware') {
+      const provision = { type: 'provision', queue: q };
+      if (dl) { dl.status = 'todo'; dl.actions = [provision, ...dl.actions.filter((a) => a.type !== 'provision')]; }
+      else steps.push({ id: 'dl', kind: 'dl', status: 'todo', models: [], actions: [provision, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl', queue: q }] });
+    } else if (device.readiness === 'provisioning') {
+      steps.push({ id: 'provisioning', kind: 'provisioning', status: 'info', actions: [] });
+    }
+    if (device.readiness === 'unsupported' || device.readiness === 'needs_review' || (!recipe && device.readiness == null)) {
+      const optional = device.readiness === 'needs_review' || steps.some((s) => s.kind === 'deb' && s.status !== 'done');
+      steps.push({ id: 'ppd', kind: 'ppd', status: optional ? 'optional' : 'todo', queue: q, reason: device.readiness_reason || '', actions: [{ type: 'upload', accept: '.ppd,.ppd.gz,.gz', endpoint: '/api/drivers/upload', expect: 'ppd', queue: q }] });
+    }
+    const setupDone = steps.every((s) => !SETUP_KINDS.has(s.kind) || s.status === 'done' || s.status === 'optional');
+    steps.push({ id: 'verify', kind: 'verify', status: device.readiness === 'ready' || (setupDone && device.connected) ? 'todo' : 'blocked', actions: device.connected ? [{ type: 'test-print', queue: q, name: device.name }] : [] });
+  } else if (device.type === 'scanner') {
+    const setupDone = steps.every((s) => !SETUP_KINDS.has(s.kind) || s.status === 'done');
+    steps.push({ id: 'verify', kind: 'verify', status: device.readiness === 'ready' && setupDone ? 'todo' : 'blocked', actions: device.readiness === 'ready' ? [{ type: 'open-scan' }] : [] });
+  } else if (device.type === 'usb' && !recipe) {
+    steps.push({ id: 'ppd', kind: 'ppd', status: 'todo', queue: null, reason: 'unknown_device', actions: [{ type: 'upload', accept: '.ppd,.ppd.gz,.gz', endpoint: '/api/drivers/upload', expect: 'ppd' }] });
+  }
+  const summary = summarize(recipe?.status === 'unsupported' ? 'unsupported' : 'x', steps);
+  if (device.readiness === 'ready' && summary.state === 'setup') summary.state = 'ready';
+  return { steps, summary };
+}
+
+/** Fetch HP host-based LaserJet firmware with foo2zjs' getweb (needs internet). */
+export async function fetchHpFirmware(models, { log = () => {}, workDir } = {}) {
+  const keys = [...new Set((Array.isArray(models) ? models : [models]).map(String))].filter((k) => k in HP_FIRMWARE);
+  if (!keys.length) return { ok: false, code: 'bad_model' };
+  const cwd = workDir || fs.mkdtempSync(path.join('/tmp', 'getweb-'));
+  const dirs = [...new Set([hpFirmwareCacheDir(), ...FOO2ZJS_FW_DIRS])];
+  const fetched = [], failed = [];
+  for (const key of keys) {
+    const file = HP_FIRMWARE[key];
+    log(`getweb ${key}`);
+    const r = await run('getweb', [key], { timeoutMs: 90000, cwd, onLine: log });
+    const found = [cwd, '/usr/share/foo2zjs/firmware', '/etc/foo2zjs/firmware'].map((d) => path.join(d, file)).find((p) => { try { return fs.statSync(p).size > 50 * 1024; } catch { return false; } });
+    if (r.code === 0 && found) {
+      const res = installDl(found, file, { dirs });
+      if (res.ok) { fetched.push(file); continue; }
+    }
+    failed.push(key);
+    log(`  ${key}: ${r.code === 127 ? 'getweb is not installed (package printer-driver-foo2zjs)' : 'download failed (no internet, or the mirror is down)'}`);
+  }
+  try { fs.rmSync(cwd, { recursive: true, force: true }); } catch {}
+  return { ok: failed.length === 0, code: failed.length ? 'fetch_failed' : undefined, fetched, failed };
 }

@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-29
+
+### Fixed
+- **Drivers & devices jobs reported "Unexpected error" although the install had succeeded.** After a successful apt install, `.deb` install or HP firmware (`.dl`) upload, the hub re-syncs printer queues by calling `printer_manager.py`; that call used a misnamed helper (`printerManagerPath` instead of `printerManagerScript`), which threw and marked the job failed. Found on the first real run (`hplip` from the apt list on a Pi 3). The job card now also shows the exception message, and job exceptions are logged with their stack.
+
+---
+
 ## [0.5.0] - 2026-09-29
 
 **Lockdown mode (print-only).** For sites where the hub must expose as little as possible: one

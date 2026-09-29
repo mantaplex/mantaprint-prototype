@@ -3834,7 +3834,7 @@ const server = http.createServer(async (req, res) => {
         const target = String(url.searchParams.get('queue') || '');
 
         if (kind === 'hplip-plugin' || kind === 'asc') {
-          if (kind === 'asc') { fs.renameSync(filePath, path.join(keep, 'hplip', 'pending.asc')); fs.rmSync(work, { recursive: true, force: true }); return reply(200, { success: true, kind, stored: 'asc' }); }
+          if (kind === 'asc') { fs.mkdirSync(path.join(keep, 'hplip'), { recursive: true, mode: 0o700 }); fs.renameSync(filePath, path.join(keep, 'hplip', 'pending.asc')); fs.rmSync(work, { recursive: true, force: true }); return reply(200, { success: true, kind, stored: 'asc' }); }
           const job = startHplipPluginJob({ filePath, fileName, ascPath: path.join(keep, 'hplip', 'pending.asc'), sha256, size: length, cleanup: () => fs.rmSync(work, { recursive: true, force: true }) });
           if (!job) { fs.rmSync(work, { recursive: true, force: true }); return reply(409, { success: false, code: 'busy' }); }
           return reply(200, { success: true, kind, job });

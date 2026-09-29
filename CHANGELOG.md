@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.9] - 2026-09-29
+
+### Fixed
+- **Uploading the plugin's `.asc` signature before the `.run` failed with "Upload failed. Check the connection and try again."** The signature is stored in `drivers/hplip/`, a directory that only the `.run` upload created; the move threw and the hub answered with a generic upload error. The directory is now created first, so the recommended order (signature first, then the plugin) works.
+
+---
+
 ## [0.3.8] - 2026-09-29
 
 ### Fixed

@@ -149,14 +149,16 @@ export default function Overview({ data, refresh, showToast, go }) {
             {SERVICES.map((s) => {
               const up = services[s.key];
               return (
-                <div key={s.key} className="flex items-center gap-3 px-4 sm:px-5 py-3">
-                  <div className="min-w-0 flex-1">
+                <div key={s.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-3">
+                  <div className="min-w-[10rem] flex-1 basis-40">
                     <div className="text-sm font-semibold text-slate-100">{s.label}</div>
-                    <div className="text-xs text-slate-500">{t(`adm.overview.svc.${s.descKey}`)}</div>
+                    <div className="text-xs text-slate-500">{t(`adm.overview.svc.${s.descKey}`)}{s.key === 'ipp_usb' && !up && <> · {t('adm.overview.standbyDesc')}</>}</div>
                   </div>
                   {/* ipp-usb is started by udev only while an IPP-over-USB device is plugged in, so "stopped" is its normal idle state. */}
-                  <StatusPill tone={up ? 'ok' : s.key === 'ipp_usb' ? 'idle' : up === false ? 'danger' : 'idle'}>{up ? t('adm.overview.running') : s.key === 'ipp_usb' ? t('adm.overview.standby') : t('adm.overview.stopped')}</StatusPill>
-                  <Button size="sm" variant="ghost" icon={restarting === s.key ? Loader2 : RefreshCw} disabled={Boolean(restarting)} onClick={() => restart(s)}>{t('adm.overview.restart')}</Button>
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <StatusPill tone={up ? 'ok' : s.key === 'ipp_usb' ? 'idle' : up === false ? 'danger' : 'idle'}>{up ? t('adm.overview.running') : s.key === 'ipp_usb' ? t('adm.overview.standby') : t('adm.overview.stopped')}</StatusPill>
+                    <Button size="sm" variant="ghost" icon={restarting === s.key ? Loader2 : RefreshCw} disabled={Boolean(restarting)} onClick={() => restart(s)}>{t('adm.overview.restart')}</Button>
+                  </div>
                 </div>
               );
             })}

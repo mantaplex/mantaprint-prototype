@@ -357,7 +357,8 @@ export const admEn = {
     svc: { cups: 'Print queues and drivers', avahi: 'Printer discovery (AirPrint, Mopria)', ippusb: 'Driverless USB printers and scanners' },
     running: 'Running',
     stopped: 'Stopped',
-    standby: 'Standby (starts when a USB device is plugged in)',
+    standby: 'Standby',
+    standbyDesc: 'Starts by itself when a USB device is plugged in.',
     restart: 'Restart',
     restarted: '{name} restarted.'
   },
@@ -923,7 +924,8 @@ export const admId = {
     svc: { cups: 'Antrean cetak dan driver', avahi: 'Penemuan printer (AirPrint, Mopria)', ippusb: 'Printer dan scanner USB tanpa driver' },
     running: 'Berjalan',
     stopped: 'Berhenti',
-    standby: 'Siaga (aktif saat perangkat USB dicolok)',
+    standby: 'Siaga',
+    standbyDesc: 'Aktif sendiri saat perangkat USB dicolok.',
     restart: 'Mulai ulang',
     restarted: '{name} dimulai ulang.'
   },

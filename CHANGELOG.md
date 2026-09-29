@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.12] - 2026-09-29
+
+### Fixed
+- **Overview → Services was unreadable on a phone.** The IPP-over-USB pill said "Standby (starts when a USB device is plugged in)", which squeezed the service name into one word per line. The pill now says *Standby*, the explanation moved into the description, and on narrow screens the status and Restart button wrap onto their own line.
+
+---
+
 ## [0.3.11] - 2026-09-29
 
 ### Fixed

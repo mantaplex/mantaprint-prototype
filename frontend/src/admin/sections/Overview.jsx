@@ -43,6 +43,7 @@ export default function Overview({ data, refresh, showToast, go }) {
   const storage = sys.storage?.emmc || {};
 
   const attention = [];
+  if (data?.lockdown?.enabled) attention.push({ icon: KeyRound, tone: 'danger', title: t('adm.overview.attn.lockdown'), desc: t('adm.overview.attn.lockdownDesc', { ips: (data.lockdown.admin_ips || []).join(', ') || '—' }), action: () => go('settings') });
   if (defaultPassword) attention.push({ icon: KeyRound, tone: 'danger', title: t('adm.overview.attn.password'), desc: t('adm.overview.attn.passwordDesc'), action: () => go('settings') });
   if (data?.updates?.update_available) attention.push({ icon: RefreshCw, tone: 'warn', title: t('adm.overview.attn.update', { v: data.updates.latest_version }), desc: t('adm.overview.attn.updateDesc'), action: () => go('updates') });
   if (printers.length === 0) attention.push({ icon: Printer, tone: 'warn', title: t('adm.overview.attn.noPrinters'), desc: t('adm.overview.attn.noPrintersDesc'), action: () => go('printers') });

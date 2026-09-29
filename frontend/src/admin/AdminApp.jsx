@@ -81,7 +81,9 @@ export default function AdminApp({ data, adminUser, onLogout, onNavigateHome, re
             <Home className="w-4 h-4" />
           </button>
         }
-        badge={updateAvailable ? (
+        badge={data?.lockdown?.enabled ? (
+          <button type="button" onClick={() => go('settings')} className="inline-flex"><StatusPill tone="danger" pulse>{t('adm.header.lockdown')}</StatusPill></button>
+        ) : updateAvailable ? (
           <button type="button" onClick={() => go('updates')} className="hidden sm:inline-flex"><StatusPill tone="warn">{t('adm.header.updateAvailable')}</StatusPill></button>
         ) : null}
         actions={

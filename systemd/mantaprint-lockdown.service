@@ -1,0 +1,16 @@
+[Unit]
+Description=MantaPrint lockdown mode (print-only firewall), re-applied at boot when enabled
+Documentation=https://github.com/mantaplex/mantaprint-prototype/blob/main/docs/14-lockdown-mode.md
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target cups.service avahi-daemon.service mantaprint-web.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/mantaprint-lockdown apply
+ExecStop=/usr/local/bin/mantaprint-lockdown clear
+
+[Install]
+WantedBy=multi-user.target

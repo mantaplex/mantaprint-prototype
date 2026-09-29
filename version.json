@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "semantic": {
     "major": 0,
-    "minor": 4,
+    "minor": 5,
     "patch": 0
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.4.0"
+    "tag": "v0.5.0"
   },
   "build": {
-    "timestamp": "2026-09-29T06:00:00Z",
+    "timestamp": "2026-09-29T09:00:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,15 +22,14 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Lockdown mode (print-only): an nftables firewall that leaves only IPP 631/tcp and mDNS reachable, admin web only from listed admin IPs, SSH optional from the same list, outbound limited to DHCP/DNS/NTP/mDNS, cups-browsed disabled. Switch in the TUI (Diagnostics > 9) and Admin > Settings; turning it off needs the lockdown PIN (default 1234). Scanning, the homepage, updates and MantaPool are blocked while it is on, by design.",
     "Driver Center (phase 1): Admin > Scanner gains a 'Drivers & firmware' area. HP multifunction printers whose scanner needs HP's proprietary HPLIP plugin (e.g. LaserJet MFP M130a) are detected from HPLIP's own models.dat and shown as 'needs HP plugin' with the exact file to download; the admin uploads it (optionally with HP's .asc signature) and the hub installs it with hp-plugin and re-probes.",
-    "Scanner status carries plugin_required (like firmware_required); Overview and Scan Studio show it. New HP hpaio scanner profile.",
-    "Installer now installs hplip (hp-plugin) and gnupg.",
-    "Overview: ipp-usb shows 'Standby' instead of a red 'Stopped' when no IPP-over-USB device is plugged in."
+    "Scanner status carries plugin_required (like firmware_required); Overview and Scan Studio show it. New HP hpaio scanner profile."
   ],
   "components": {
-    "core": "0.4.0",
-    "web": "0.4.0",
-    "frontend": "0.4.0",
+    "core": "0.5.0",
+    "web": "0.5.0",
+    "frontend": "0.5.0",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

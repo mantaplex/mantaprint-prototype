@@ -57,6 +57,8 @@ prototype_gate() {
 
     if [ -z "$method" ]; then
         # Open the controlling terminal; fails when there is none (CI, cloud-init, pipes without a tty).
+        # The notice and the prompt go straight to the tty, so they still work when the installer's
+        # output is piped (e.g. "| tee install.log"). No whiptail: it cannot take over the keyboard then.
         if ! { exec 3<>/dev/tty; } 2>/dev/null; then
             echo -e "${PG_RED}[ABORTED] ${product} is a PROTOTYPE and needs an explicit risk acknowledgement.${PG_NC}"
             echo "  No terminal is available to ask for it. Read docs/PROTOTYPE-NOTICE.txt, then re-run with"
@@ -64,13 +66,6 @@ prototype_gate() {
             exit 1
         fi
 
-        # A scrollable dialog when whiptail and a real terminal are available, plain text otherwise.
-        local cols
-        cols="$(tput cols 2>/dev/null || echo 0)"
-        if command -v whiptail >/dev/null 2>&1 && [ -f "$notice_file" ] && [ "${TERM:-dumb}" != "dumb" ] && [ "$cols" -ge 76 ]; then
-            whiptail --title "${product} ${version} - PROTOTYPE" --scrolltext \
-                --textbox "$notice_file" 30 76 <&3 >&3 2>&3 || true
-        fi
         _pg_print_notice "$notice_file" >&3
 
         local answer=""

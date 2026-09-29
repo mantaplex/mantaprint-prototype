@@ -210,7 +210,7 @@ export const admEn = {
   overview: {
     title: 'Overview',
     desc: 'The state of this hub at a glance, and anything that needs your attention.',
-    online: 'online', noneOnline: 'none online', printing: 'printing', idle: 'idle', notDetected: 'Not detected', ready: 'ready', offline: 'offline', needsFirmware: 'needs firmware',
+    online: 'online', noneOnline: 'none online', printing: 'printing', idle: 'idle', notDetected: 'Not detected', ready: 'ready', offline: 'offline', needsFirmware: 'needs firmware', needsPlugin: 'needs HP plugin',
     attention: 'Needs attention',
     allGood: 'All good',
     allGoodDesc: 'Nothing needs your attention right now.',
@@ -232,6 +232,8 @@ export const admEn = {
       },
       scannerFirmware: '{model} is waiting for its firmware',
       scannerFirmwareDesc: 'Upload the ScanSnap firmware file from Scanner.',
+      scannerPlugin: '{model} needs HP\'s scanner plugin',
+      scannerPluginDesc: 'Upload HP\'s plugin file from Scanner.',
       service: '{name} is not running',
       serviceDesc: 'Printing or discovery may not work. Try restarting it below.',
       storage: 'Storage is {p}% full'
@@ -251,6 +253,7 @@ export const admEn = {
     svc: { cups: 'Print queues and drivers', avahi: 'Printer discovery (AirPrint, Mopria)', ippusb: 'Driverless USB printers and scanners' },
     running: 'Running',
     stopped: 'Stopped',
+    standby: 'Standby (starts when a USB device is plugged in)',
     restart: 'Restart',
     restarted: '{name} restarted.'
   },
@@ -418,6 +421,42 @@ export const admEn = {
     noDevices: 'No paired devices',
     noDevicesDesc: 'Pair a phone or tablet to scan with the standalone app.',
     pairTitle: 'Pair a device',
+    drivers: {
+      title: 'Drivers & firmware',
+      desc: 'Vendor files the hub can\'t ship with: upload them here and the hub installs them. Uploaded files run as root on this hub; only upload files you downloaded from the vendor yourself.'
+    },
+    hp: {
+      installedTitle: 'HP plugin {v} installed',
+      noneInstalled: 'HP plugin not installed',
+      noHplip: 'HPLIP is not installed on this hub',
+      noHplipDesc: 'The HP driver suite (package "hplip") is missing, so the plugin cannot be installed. Reinstall the hub with a current installer, or install the package by hand.',
+      desc: 'HP multifunction printers (for example LaserJet MFP M130a) only scan once HP\'s proprietary plugin is installed. Upload {file} from HP.',
+      needsTitle: '{model} needs HP\'s scanner plugin',
+      needsDesc: 'The printer is plugged in and can print, but Linux can\'t use its scanner until HP\'s proprietary plugin is installed. Until then it won\'t show up as a scanner.',
+      pendingDesc: 'Plugged in, waiting for the HP plugin.',
+      missing: 'Needs HP plugin',
+      where1: 'On your PC, download exactly {file} (the plugin version must match HPLIP {v} on this hub) from',
+      where2: 'Optional but recommended: also download the matching .asc signature file and add it first, so the hub can verify the plugin is genuine.',
+      license: 'The plugin is HP\'s proprietary software under HP\'s license; uploading it means you accept that license on this hub\'s behalf.',
+      upload: 'Upload plugin (.run)',
+      uploadAsc: 'Add signature (.asc)',
+      ascHint: 'HP\'s detached signature for the plugin file, downloaded from the same page.',
+      ascStored: 'Signature stored. Now upload the plugin file.',
+      installing: 'Installing plugin…',
+      installed: 'HP plugin {v} installed. If the scanner doesn\'t appear within a few seconds, unplug the printer and plug it back in.',
+      errors: {
+        not_a_plugin: 'That isn\'t an HP plugin file. It must be named like hplip-3.22.10-plugin.run.',
+        hplip_missing: 'HPLIP is not installed on this hub, so the plugin can\'t be installed.',
+        version_mismatch: 'Wrong plugin version: this hub needs {file}, you uploaded {v}.',
+        hp_plugin_missing: 'The hp-plugin tool is missing on this hub (package "hplip").',
+        install_failed: 'hp-plugin did not finish successfully. Details below.',
+        too_large: 'That file is too large to be an HP plugin (they are about 10 MB).',
+        insufficient_space: 'Not enough free space on the hub.',
+        busy: 'Another install is still running.',
+        upload_failed: 'Upload failed. Check the connection and try again.',
+        generic: 'Something went wrong.'
+      }
+    },
     fw: {
       title: 'ScanSnap firmware',
       desc: 'Only the ScanSnap S300, S1100, S1300, S1300i and fi-60F/fi-65F need this. The file comes with Fujitsu/PFU software, so it can\'t ship with the hub.',
@@ -607,7 +646,7 @@ export const admId = {
   overview: {
     title: 'Ringkasan',
     desc: 'Kondisi hub ini secara sekilas, dan hal yang perlu Anda tangani.',
-    online: 'online', noneOnline: 'tidak ada yang online', printing: 'mencetak', idle: 'siaga', notDetected: 'Tidak terdeteksi', ready: 'siap', offline: 'offline', needsFirmware: 'butuh firmware',
+    online: 'online', noneOnline: 'tidak ada yang online', printing: 'mencetak', idle: 'siaga', notDetected: 'Tidak terdeteksi', ready: 'siap', offline: 'offline', needsFirmware: 'butuh firmware', needsPlugin: 'butuh plugin HP',
     attention: 'Perlu perhatian',
     allGood: 'Semua baik',
     allGoodDesc: 'Tidak ada yang perlu ditangani saat ini.',
@@ -629,6 +668,8 @@ export const admId = {
       },
       scannerFirmware: '{model} menunggu firmware',
       scannerFirmwareDesc: 'Unggah file firmware ScanSnap dari menu Scanner.',
+      scannerPlugin: '{model} butuh plugin scanner HP',
+      scannerPluginDesc: 'Unggah file plugin HP dari menu Scanner.',
       service: '{name} tidak berjalan',
       serviceDesc: 'Pencetakan atau penemuan printer mungkin terganggu. Coba mulai ulang di bawah.',
       storage: 'Penyimpanan terisi {p}%'
@@ -648,6 +689,7 @@ export const admId = {
     svc: { cups: 'Antrean cetak dan driver', avahi: 'Penemuan printer (AirPrint, Mopria)', ippusb: 'Printer dan scanner USB tanpa driver' },
     running: 'Berjalan',
     stopped: 'Berhenti',
+    standby: 'Siaga (aktif saat perangkat USB dicolok)',
     restart: 'Mulai ulang',
     restarted: '{name} dimulai ulang.'
   },
@@ -815,6 +857,42 @@ export const admId = {
     noDevices: 'Belum ada perangkat terpasang',
     noDevicesDesc: 'Pasangkan HP atau tablet untuk memindai dengan aplikasi terpisah.',
     pairTitle: 'Pasangkan perangkat',
+    drivers: {
+      title: 'Driver & firmware',
+      desc: 'File vendor yang tidak bisa disertakan di hub: unggah di sini, hub yang memasangnya. File yang diunggah berjalan sebagai root di hub ini; hanya unggah file yang Anda unduh sendiri dari vendornya.'
+    },
+    hp: {
+      installedTitle: 'Plugin HP {v} terpasang',
+      noneInstalled: 'Plugin HP belum terpasang',
+      noHplip: 'HPLIP tidak terpasang di hub ini',
+      noHplipDesc: 'Paket driver HP ("hplip") tidak ada, jadi plugin tidak bisa dipasang. Instal ulang hub dengan installer terbaru, atau pasang paketnya secara manual.',
+      desc: 'Printer multifungsi HP (misalnya LaserJet MFP M130a) baru bisa memindai setelah plugin proprietary HP terpasang. Unggah {file} dari HP.',
+      needsTitle: '{model} butuh plugin scanner HP',
+      needsDesc: 'Printer sudah tercolok dan bisa mencetak, tapi Linux belum bisa memakai scanner-nya sebelum plugin proprietary HP dipasang. Sampai saat itu ia tidak muncul sebagai scanner.',
+      pendingDesc: 'Sudah tercolok, menunggu plugin HP.',
+      missing: 'Butuh plugin HP',
+      where1: 'Di PC Anda, unduh persis {file} (versi plugin harus sama dengan HPLIP {v} di hub ini) dari',
+      where2: 'Opsional tapi disarankan: unduh juga file tanda tangan .asc yang cocok dan tambahkan lebih dulu, supaya hub bisa memastikan plugin-nya asli.',
+      license: 'Plugin ini software proprietary HP dengan lisensi HP; dengan mengunggahnya Anda menyetujui lisensi itu atas nama hub ini.',
+      upload: 'Unggah plugin (.run)',
+      uploadAsc: 'Tambah tanda tangan (.asc)',
+      ascHint: 'Tanda tangan terpisah dari HP untuk file plugin, diunduh dari halaman yang sama.',
+      ascStored: 'Tanda tangan tersimpan. Sekarang unggah file plugin-nya.',
+      installing: 'Memasang plugin…',
+      installed: 'Plugin HP {v} terpasang. Jika scanner belum muncul dalam beberapa detik, cabut printer lalu colokkan lagi.',
+      errors: {
+        not_a_plugin: 'Itu bukan file plugin HP. Namanya harus seperti hplip-3.22.10-plugin.run.',
+        hplip_missing: 'HPLIP tidak terpasang di hub ini, jadi plugin tidak bisa dipasang.',
+        version_mismatch: 'Versi plugin salah: hub ini butuh {file}, yang diunggah {v}.',
+        hp_plugin_missing: 'Alat hp-plugin tidak ada di hub ini (paket "hplip").',
+        install_failed: 'hp-plugin tidak selesai dengan sukses. Detailnya di bawah.',
+        too_large: 'File terlalu besar untuk plugin HP (ukurannya sekitar 10 MB).',
+        insufficient_space: 'Ruang kosong di hub tidak cukup.',
+        busy: 'Pemasangan lain masih berjalan.',
+        upload_failed: 'Unggahan gagal. Periksa koneksi lalu coba lagi.',
+        generic: 'Terjadi kesalahan.'
+      }
+    },
     fw: {
       title: 'Firmware ScanSnap',
       desc: 'Hanya ScanSnap S300, S1100, S1300, S1300i dan fi-60F/fi-65F yang butuh ini. Filenya bawaan software Fujitsu/PFU, jadi tidak bisa disertakan di hub.',

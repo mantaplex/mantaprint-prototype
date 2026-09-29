@@ -5,7 +5,7 @@ export const studioEn = {
     home: 'Home', language: 'Language', saved: 'Saved on this device', saving: 'Saving…', saveError: 'Save failed',
     undo: 'Undo', redo: 'Redo', export: 'Export', togglePages: 'Show or hide pages', renameHint: 'Click to rename'
   },
-  scanner: { connected: 'Scanner connected', notConnected: 'No scanner detected', notConnectedHint: 'Connect a USB scanner to the hub or import images instead.', needsFirmware: '{model} needs its firmware', needsFirmwareHint: 'Ask the hub admin to install the scanner firmware (Admin → Scanner). You can import images meanwhile.' },
+  scanner: { connected: 'Scanner connected', notConnected: 'No scanner detected', notConnectedHint: 'Connect a USB scanner to the hub or import images instead.', needsFirmware: '{model} needs its firmware', needsFirmwareHint: 'Ask the hub admin to install the scanner firmware (Admin → Scanner). You can import images meanwhile.', needsPlugin: '{model} needs the HP plugin', needsPluginHint: 'Ask the hub admin to install HP\'s scanner plugin (Admin → Scanner). You can import images meanwhile.' },
   library: {
     tagline: 'Local-first scan & document workbench',
     heroTitle: 'Scan, tidy up, export — all on this device',
@@ -99,7 +99,7 @@ export const studioId = {
     home: 'Beranda', language: 'Bahasa', saved: 'Tersimpan di perangkat ini', saving: 'Menyimpan…', saveError: 'Gagal menyimpan',
     undo: 'Urungkan', redo: 'Ulangi', export: 'Ekspor', togglePages: 'Tampilkan/sembunyikan halaman', renameHint: 'Klik untuk mengganti nama'
   },
-  scanner: { connected: 'Scanner terhubung', notConnected: 'Scanner tidak terdeteksi', notConnectedHint: 'Hubungkan scanner USB ke hub, atau impor gambar.', needsFirmware: '{model} butuh firmware', needsFirmwareHint: 'Minta admin hub memasang firmware scanner (Admin → Scanner). Sementara itu Anda bisa impor gambar.' },
+  scanner: { connected: 'Scanner terhubung', notConnected: 'Scanner tidak terdeteksi', notConnectedHint: 'Hubungkan scanner USB ke hub, atau impor gambar.', needsFirmware: '{model} butuh firmware', needsFirmwareHint: 'Minta admin hub memasang firmware scanner (Admin → Scanner). Sementara itu Anda bisa impor gambar.', needsPlugin: '{model} butuh plugin HP', needsPluginHint: 'Minta admin hub memasang plugin scanner HP (Admin → Scanner). Sementara itu Anda bisa impor gambar.' },
   library: {
     tagline: 'Workbench pindai & dokumen berbasis perangkat lokal',
     heroTitle: 'Pindai, rapikan, ekspor — semuanya di perangkat ini',

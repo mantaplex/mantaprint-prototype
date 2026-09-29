@@ -31,6 +31,7 @@ import { configManager } from './config-manager.mjs';
 import { applianceUpdater, UpdaterState } from './updater.mjs';
 import { scannerHardwareLock, scannerPairingManager } from './scanner-pairing-manager.mjs';
 import { getFirmwareStatus, getExtractionTools, pickWorkBase, freeBytes, receiveUpload, processFirmwareUpload } from './scanner-firmware.mjs';
+import { getHplipPluginStatus, hpPluginHint, installPluginFile, RUN_MAX_BYTES as HPLIP_RUN_MAX_BYTES } from './hplip-plugin.mjs';
 import { directConnect } from './direct-connect.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -717,6 +718,26 @@ const SCANNER_PROFILES = [
     supported_paper_sizes: ['A4', 'Letter', 'ID Card'],
     usb_id: '04a9:18da',
     match: /(g3030|g3000|pixma.*g3|04a9:18da)/i
+  },
+  {
+    // Any HP multifunction on SANE's hpaio backend (LaserJet MFP M130a and friends). Most need
+    // HP's proprietary plugin before hpaio lists them; see hplip-plugin.mjs.
+    id: 'hp-mfp-hpaio',
+    name: 'HP multifunction (HPLIP)',
+    vendor: 'HP',
+    model: 'LaserJet / DeskJet / OfficeJet MFP',
+    driver: 'hpaio',
+    type: 'Flatbed',
+    sources: ['Flatbed'],
+    has_adf: false,
+    duplex_capable: false,
+    resolutions: [75, 150, 300, 600],
+    modes: ['Color', 'Gray'],
+    formats: ['pdf', 'jpeg', 'png', 'tiff'],
+    max_geometry: { width: 216, height: 297 },
+    supported_paper_sizes: ['A4', 'Letter', 'ID Card'],
+    usb_id: '03f0:*',
+    match: /(^|[^a-z])hpaio:|hewlett|(^|\s)hp(\s|_).*(mfp|laserjet|deskjet|officejet|envy|smart tank)/i
   }
 ];
 
@@ -757,6 +778,7 @@ let cachedScanner = null;
 let lastScannerProbe = 0;
 let isProbingScanner = false;
 let scannerFirmwareBusy = false;
+let hplipPluginBusy = false;
 
 // epjitsu.conf names models tersely ("Fujitsu S1300"); prefer our profile's full name.
 function scannerModelName(usbId, fallback) {
@@ -784,7 +806,17 @@ function scannerFirmwareHint() {
 function withFirmwareHint(state) {
   const hint = scannerFirmwareHint();
   if (hint) state.firmware_required = hint;
+  // An HP MFP whose scanner needs HP's plugin is likewise invisible to scanimage.
+  if (!state.connected && lastHpPluginHint) state.plugin_required = lastHpPluginHint;
   return state;
+}
+
+// Refreshed on every scanner probe (sysfs + models.dat + dpkg, a few ms) so the hint is
+// current by the time withFirmwareHint() runs synchronously.
+let lastHpPluginHint = null;
+async function refreshHpPluginHint() {
+  lastHpPluginHint = await hpPluginHint();
+  return lastHpPluginHint;
 }
 
 function getInitialScannerState() {
@@ -827,6 +859,7 @@ async function probeScannerTelemetry(forceFresh = false) {
   isProbingScanner = true;
 
   try {
+    await refreshHpPluginHint().catch(() => {});
     // 1. Direct probe to local eSCL endpoint (e.g. ipp-usb on 127.0.0.1:60000)
     try {
       const resp = await fetch('http://127.0.0.1:60000/eSCL/ScannerCapabilities', {
@@ -3634,6 +3667,64 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 9. ScanSnap (epjitsu) firmware: status + upload of a .nal or the installer holding it
+    // --- DRIVER CENTER: HPLIP proprietary plugin ---
+    if (pathname === '/api/drivers/hplip' && req.method === 'GET') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      const st = await getHplipPluginStatus();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({ success: true, ...st, busy: hplipPluginBusy }));
+      return;
+    }
+
+    // Raw body = the .run file (X-File-Name carries its name); ?kind=asc stores HP's detached
+    // signature next to a previously uploaded .run so hp-plugin can verify it.
+    if (pathname === '/api/drivers/hplip/plugin' && req.method === 'POST') {
+      const reply = (code, body) => {
+        if (res.headersSent) return;
+        res.writeHead(code, { 'Content-Type': 'application/json', ...(req.complete ? {} : { Connection: 'close' }) });
+        res.end(JSON.stringify(body));
+      };
+      if (!isAdminAuthenticated(req)) return reply(401, { success: false, code: 'unauthorized' });
+      if (hplipPluginBusy) return reply(409, { success: false, code: 'busy' });
+      const length = Number(req.headers['content-length']);
+      if (!Number.isFinite(length) || length <= 0) return reply(411, { success: false, code: 'length_required' });
+      const kind = url.searchParams.get('kind') === 'asc' ? 'asc' : 'run';
+      const maxBytes = kind === 'asc' ? 64 * 1024 : HPLIP_RUN_MAX_BYTES;
+      if (length > maxBytes) return reply(413, { success: false, code: 'too_large', max_upload_bytes: maxBytes });
+      let fileName = '';
+      try { fileName = path.basename(decodeURIComponent(String(req.headers['x-file-name'] || ''))).slice(0, 200); } catch {}
+      const base = pickWorkBase();
+      const keep = path.join(base.dir, 'drivers', 'hplip');
+      hplipPluginBusy = true;
+      try {
+        fs.mkdirSync(keep, { recursive: true, mode: 0o700 });
+        if (freeBytes(keep) < length + 64 * 1024 * 1024) return reply(507, { success: false, code: 'insufficient_space' });
+        if (kind === 'asc') {
+          const target = path.join(keep, 'pending.asc');
+          try { await receiveUpload(req, target, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+          return reply(200, { success: true, stored: 'asc' });
+        }
+        const upload = path.join(keep, 'upload.run');
+        try { await receiveUpload(req, upload, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+        const asc = path.join(keep, 'pending.asc');
+        const lines = [];
+        const result = await installPluginFile({ filePath: upload, fileName, ascPath: fs.existsSync(asc) ? asc : null, log: (l) => { lines.push(l); console.log(`[HPLIP plugin] ${l.split('\n')[0].slice(0, 200)}`); } });
+        if (result.ok) {
+          console.log(`[HPLIP plugin] Installed plugin ${result.version}`);
+          await probeScannerTelemetry(true).catch(() => {});
+        } else {
+          try { fs.unlinkSync(upload); } catch {}
+        }
+        const st = await getHplipPluginStatus();
+        return reply(result.ok ? 200 : 422, { success: result.ok, ...result, status: st });
+      } catch (err) {
+        console.error('[HPLIP plugin] Upload failed:', err.message);
+        return reply(500, { success: false, code: 'install_failed' });
+      } finally {
+        hplipPluginBusy = false;
+      }
+    }
+
     if (pathname === '/api/scanner/firmware' && req.method === 'GET') {
       if (!isAdminOrLocal(req)) return denyAdmin(res);
       const tools = getExtractionTools();

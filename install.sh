@@ -212,6 +212,8 @@ PRINTER_SCANNER_DRIVERS=(
     printer-driver-sag-gdi
     printer-driver-splix
     libsane-hpaio
+    hplip
+    gnupg
 )
 
 OPTIONAL_PACKAGES=(

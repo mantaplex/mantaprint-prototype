@@ -48,6 +48,7 @@ office/branch LAN.
 |---|---|---|---|
 | I1 | **NodeSource setup script is piped to a root shell** (`curl -fsSL https://deb.nodesource.com/setup_20.x \| bash -`) by both installers when Node.js is missing, without checksum or signature checks. | Whoever controls that script or the network path to it gets root on the device during installation. Also requires internet access. | High |
 | I2 | Installers download further packages and firmware from third-party mirrors (e.g. HP firmware via `foo2zjs getweb`). | Same trust issue as I1 for those components. | Medium |
+| I5 | **Driver Center uploads run vendor code as root.** Admin → Scanner accepts vendor files (ScanSnap firmware, HP's HPLIP plugin) and installs them on the hub; the HP plugin is a proprietary installer executed with root rights. Signature verification is only done when the admin also uploads HP's `.asc` file. | A malicious or tampered file uploaded by an admin (or by anyone holding an admin token, see H1/H5) gets root on the hub. | High |
 | I3 | Proprietary third-party driver packages are bundled under `drivers/`. | Their licenses are not re-verified for redistribution; check them before redistributing. | Legal |
 | I4 | No SBOM, no reproducible builds, no signed release artifacts. | Hard to verify what is running on a device. | Medium |
 

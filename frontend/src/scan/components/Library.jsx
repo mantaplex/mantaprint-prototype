@@ -157,9 +157,9 @@ export default function Library({ onOpenDocument, onNewScan, onImport, onNavigat
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className={`hidden md:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full text-[11px] font-semibold border ${scannerConnected ? 'bg-manta-500/10 border-manta-500/30 text-manta-300' : scanner?.firmware_required ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${scannerConnected ? 'bg-manta-400 animate-pulse' : scanner?.firmware_required ? 'bg-amber-400' : 'bg-slate-500'}`} />
-            {scannerConnected ? (scanner?.name || t('studio.scanner.connected')) : scanner?.firmware_required ? t('studio.scanner.needsFirmware', { model: scanner.firmware_required.model }) : t('studio.scanner.notConnected')}
+          <span className={`hidden md:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full text-[11px] font-semibold border ${scannerConnected ? 'bg-manta-500/10 border-manta-500/30 text-manta-300' : (scanner?.firmware_required || scanner?.plugin_required) ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${scannerConnected ? 'bg-manta-400 animate-pulse' : (scanner?.firmware_required || scanner?.plugin_required) ? 'bg-amber-400' : 'bg-slate-500'}`} />
+            {scannerConnected ? (scanner?.name || t('studio.scanner.connected')) : scanner?.firmware_required ? t('studio.scanner.needsFirmware', { model: scanner.firmware_required.model }) : scanner?.plugin_required ? t('studio.scanner.needsPlugin', { model: scanner.plugin_required.model }) : t('studio.scanner.notConnected')}
           </span>
           <button
             type="button"

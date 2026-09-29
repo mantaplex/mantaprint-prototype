@@ -3830,7 +3830,7 @@ const server = http.createServer(async (req, res) => {
           fs.rmSync(work, { recursive: true, force: true });
           if (!r.ok) return reply(422, { success: false, kind, ...r });
           driverCenter.addRecord({ kind, name: r.name, version: '', sha256, size: length, note: 'HP LaserJet firmware (foo2zjs)', path: r.paths[0] });
-          if (target) runCmd('/usr/bin/python3', [printerManagerPath(), 'provision-firmware', target], 120000).catch(() => {});
+          if (target) runCmd('/usr/bin/python3', [printerManagerScript(), 'provision-firmware', target], 120000).catch(() => {});
           return reply(200, { success: true, kind, ...r });
         }
 
@@ -3877,7 +3877,7 @@ const server = http.createServer(async (req, res) => {
             const kept = path.join(keepDir, `${file.info.package}_${file.info.version}_${file.info.architecture}.deb`.replace(/[^A-Za-z0-9_.+-]/g, '_'));
             try { fs.copyFileSync(file.path, kept); } catch {}
             driverCenter.addRecord({ kind: 'deb', name: file.name, package: file.info.package, version: file.info.version, architecture: file.info.architecture, maintainer: file.info.maintainer, sha256: file.sha256, size: file.size, path: kept, target: target || null });
-            runCmd('/usr/bin/python3', [printerManagerPath(), 'sync'], 120000).catch(() => {});
+            runCmd('/usr/bin/python3', [printerManagerScript(), 'sync'], 120000).catch(() => {});
           }
           return r;
         }
@@ -3945,7 +3945,7 @@ const server = http.createServer(async (req, res) => {
       if (!driverCenter.isAllowedPackage(pkg)) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'not_allowed' })); }
       const job = driverCenter.startJob('apt-install', pkg, async (log) => {
         const r = await driverCenter.aptInstall(pkg, { log });
-        if (r.ok) { runCmd('/usr/bin/python3', [printerManagerPath(), 'sync'], 120000).catch(() => {}); await probeScannerTelemetry(true).catch(() => {}); }
+        if (r.ok) { runCmd('/usr/bin/python3', [printerManagerScript(), 'sync'], 120000).catch(() => {}); await probeScannerTelemetry(true).catch(() => {}); }
         return r;
       });
       if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }

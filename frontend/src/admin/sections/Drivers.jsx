@@ -263,7 +263,7 @@ function JobCard({ job, t }) {
   return (
     <Card className={`mt-4 ${job.state === 'failed' ? '!border-rose-500/30' : running ? '!border-manta-500/30' : '!border-white/10'}`}>
       <CardHeader icon={running ? Loader2 : job.state === 'failed' ? AlertTriangle : Check} title={t(`adm.drivers.job.${job.kind}`, { name: job.label })}
-        description={running ? t('adm.drivers.job.running') : job.state === 'failed' ? t(`adm.drivers.errors.${job.result?.code || 'install_failed'}`) : t('adm.drivers.job.done')}
+        description={running ? t('adm.drivers.job.running') : job.state === 'failed' ? `${t(`adm.drivers.errors.${job.result?.code || 'install_failed'}`)}${job.result?.message ? ` (${job.result.message})` : ''}` : t('adm.drivers.job.done')}
         actions={<StatusPill tone={running ? 'info' : job.state === 'failed' ? 'danger' : 'ok'} pulse={running}>{t(`adm.drivers.job.state.${job.state}`)}</StatusPill>} />
       {job.log?.length > 0 && <pre className="mt-3 max-h-48 overflow-auto rounded-xl bg-black/40 p-3 text-[10px] leading-relaxed text-slate-400 whitespace-pre-wrap">{job.log.slice(-60).join('\n')}</pre>}
     </Card>

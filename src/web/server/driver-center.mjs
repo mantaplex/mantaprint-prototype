@@ -488,6 +488,7 @@ export function startJob(kind, label, fn) {
   Promise.resolve().then(() => fn(log)).then((result) => {
     job.result = result; job.state = result && result.ok === false ? 'failed' : 'done';
   }).catch((err) => {
+    console.error(`[Drivers] job ${kind} (${label}) threw:`, err.stack || err.message);
     job.result = { ok: false, code: 'exception', message: err.message }; job.state = 'failed';
   }).finally(() => { job.finished_at = new Date().toISOString(); });
   return job;

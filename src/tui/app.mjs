@@ -403,6 +403,12 @@ const state = {
     ],
   },
 
+  // Lockdown mode (print-only firewall); see docs/14-lockdown-mode.md
+  lockdown: {
+    enabled: false,
+    modal: { open: false, field: 0, adminIp: '', pin: '', errorMsg: '', busy: false },
+  },
+
   // Notification Banner
   banner: {
     text: 'MantaPrint Hub Console siap. Navigasi dengan Keyboard USB [1-5 / Panah / Enter].',
@@ -485,6 +491,7 @@ async function pollBackendTelemetry() {
       safeFetch('/api/hdmi/network/status'),
       safeFetch('/api/status'),
     ]);
+    if (sysRes && sysRes.lockdown) state.lockdown.enabled = Boolean(sysRes.lockdown.enabled);
 
     if (netRes && netRes.success) {
       if (netRes.wifi) {
@@ -794,6 +801,12 @@ const startDirectConnect = () => directConnectAction('start');
 
 // 7. Run Diagnostic Action
 async function runDiagnostic(actionIdx) {
+  if (actionIdx === 8) {
+    const m = state.lockdown.modal;
+    m.open = true; m.field = 0; m.adminIp = ''; m.pin = ''; m.errorMsg = ''; m.busy = false;
+    renderFull();
+    return;
+  }
   state.diagnostics.running = true;
   const log = (msg) => {
     state.diagnostics.logLines.push(`[${new Date().toLocaleTimeString('id-ID')}] ${msg}`);
@@ -1036,7 +1049,7 @@ function renderFull() {
 
   // 2. BRANDING SUBTITLE ROW (Row 2)
   const netInfo = getNetworkBadgeInfo();
-  const brandLeft = `  ${ANSI.bold}${ANSI.brightWhite}MANTAPRINT HUB ${APP_VERSION}${ANSI.reset} ${ANSI.cyan}::${ANSI.reset} ${ANSI.white}${labels.brandSub}${ANSI.reset} ${ANSI.dim}(ARM64 Linux)${ANSI.reset}`;
+  const brandLeft = `  ${ANSI.bold}${ANSI.brightWhite}MANTAPRINT HUB ${APP_VERSION}${ANSI.reset} ${ANSI.cyan}::${ANSI.reset} ${ANSI.white}${labels.brandSub}${ANSI.reset} ${ANSI.dim}(ARM64 Linux)${ANSI.reset}${state.lockdown.enabled ? ` ${ANSI.bgRed}${ANSI.brightWhite}${ANSI.bold} LOCKDOWN ${ANSI.reset}` : ''}`;
   const brandRight = netInfo.statusBadge;
   const space2 = W - 2 - stripAnsi(brandLeft).length - stripAnsi(brandRight).length;
   rows.push(`${ANSI.cyan}│${ANSI.reset}${brandLeft}${' '.repeat(Math.max(0, space2))}${brandRight}${ANSI.cyan}│${ANSI.reset}`);
@@ -1119,6 +1132,8 @@ function renderFull() {
     buffer += renderModalOverlay(W, H);
   } else if (state.ethernet.confirmModal) {
     buffer += renderEthConfirmOverlay(W, H);
+  } else if (state.lockdown.modal.open) {
+    buffer += renderLockdownOverlay(W, H);
   }
 
   process.stdout.write(buffer);
@@ -1130,7 +1145,7 @@ function renderFull() {
  * ZERO-FLICKER: Rows 4 through H-3 & H-1..H are NOT redrawn at all!
  */
 function updateClockAndTelemetry() {
-  if (state.wifi.modal.open) return; // Keep modal stable
+  if (state.wifi.modal.open || state.lockdown.modal.open) return; // Keep modal stable
 
   const { W, H } = getTerminalDimensions();
   state.cols = W;
@@ -1149,7 +1164,7 @@ function updateClockAndTelemetry() {
 
   // Row 2: Brand Subtitle
   const netInfo = getNetworkBadgeInfo();
-  const brandLeft = `  ${ANSI.bold}${ANSI.brightWhite}MANTAPRINT HUB ${APP_VERSION}${ANSI.reset} ${ANSI.cyan}::${ANSI.reset} ${ANSI.white}${labels.brandSub}${ANSI.reset} ${ANSI.dim}(ARM64 Linux)${ANSI.reset}`;
+  const brandLeft = `  ${ANSI.bold}${ANSI.brightWhite}MANTAPRINT HUB ${APP_VERSION}${ANSI.reset} ${ANSI.cyan}::${ANSI.reset} ${ANSI.white}${labels.brandSub}${ANSI.reset} ${ANSI.dim}(ARM64 Linux)${ANSI.reset}${state.lockdown.enabled ? ` ${ANSI.bgRed}${ANSI.brightWhite}${ANSI.bold} LOCKDOWN ${ANSI.reset}` : ''}`;
   const brandRight = netInfo.statusBadge;
   const space2 = W - 2 - stripAnsi(brandLeft).length - stripAnsi(brandRight).length;
   const row2 = `${ANSI.cyan}│${ANSI.reset}${brandLeft}${' '.repeat(Math.max(0, space2))}${brandRight}${ANSI.cyan}│${ANSI.reset}`;
@@ -1583,6 +1598,7 @@ function renderDiagnosticsTab(width, height) {
     { tag: '[AIR]', name: '6. Restart Avahi mDNS',   desc: 'Muat ulang discovery AirPrint & Mopria' },
     { tag: '[PRN]', name: '7. Cetak Halaman Uji',    desc: 'Kirim dokumen test page ke printer USB' },
     { tag: '[RBT]', name: '8. Reboot STB MantaPrint', desc: 'Restart sistem operasi STB MantaPrint aman' },
+    { tag: '[LCK]', name: state.lockdown.enabled ? '9. Matikan Lockdown' : '9. Mode Lockdown (Cetak)', desc: state.lockdown.enabled ? 'AKTIF: hub hanya mencetak. Butuh PIN untuk mematikan' : 'Firewall hanya-cetak: scan, web & update diblokir' },
   ] : [
     { tag: '[NET]', name: '1. Ping Default Gateway', desc: `Test local gateway (${state.telemetry.defaultGateway})` },
     { tag: '[WAN]', name: '2. Ping Internet Cloud',  desc: 'Test Internet route (1.1.1.1 Cloudflare)' },
@@ -1592,6 +1608,7 @@ function renderDiagnosticsTab(width, height) {
     { tag: '[AIR]', name: '6. Restart Avahi mDNS',   desc: 'Reload AirPrint & Mopria discovery engine' },
     { tag: '[PRN]', name: '7. Print Test Calibration', desc: 'Send diagnostic calibration sheet to USB' },
     { tag: '[RBT]', name: '8. Reboot MantaPrint Hub', desc: 'Perform safe appliance operating system reboot' },
+    { tag: '[LCK]', name: state.lockdown.enabled ? '9. Turn Lockdown Off' : '9. Lockdown Mode (print)', desc: state.lockdown.enabled ? 'ON: hub only prints. PIN needed to turn off' : 'Print-only firewall: scan, web & updates blocked' },
   ];
 
   actions.forEach((a, idx) => {
@@ -1729,6 +1746,112 @@ function renderModalOverlay(W, H) {
   return overlayBuffer;
 }
 
+// MODAL: LOCKDOWN MODE (print-only firewall). Fields: 0 admin IP (only when turning on),
+// 0 PIN (when turning off), 1 confirm button, 2 cancel button.
+function renderLockdownOverlay(W, H) {
+  const modalW = 64;
+  const m = state.lockdown.modal;
+  const isId = state.language === 'id';
+  const on = state.lockdown.enabled;
+  const box = [];
+  const line = (txt) => box.push(`│${centerText(txt, modalW - 2)}│`);
+  const left = (txt) => box.push(`│ ${txt.padEnd(modalW - 4, ' ').slice(0, modalW - 4)} │`);
+  box.push(`┌${'─'.repeat(modalW - 2)}┐`);
+  line(`${ANSI.bold}${ANSI.brightWhite}${on ? (isId ? 'MATIKAN MODE LOCKDOWN' : 'TURN LOCKDOWN OFF') : (isId ? 'MODE LOCKDOWN (HANYA CETAK)' : 'LOCKDOWN MODE (PRINT-ONLY)')}${ANSI.reset}`);
+  box.push(`├${'─'.repeat(modalW - 2)}┤`);
+  if (!on) {
+    left(`${ANSI.brightYellow}${isId ? 'Lockdown HANYA untuk mencetak. Selama aktif:' : 'Lockdown is for printing ONLY. While it is on:'}${ANSI.reset}`);
+    const blocks = isId
+      ? ['- Scan / Scan Studio / aplikasi scanner: DIBLOKIR', '- Halaman web & konsol admin: DIBLOKIR (kecuali IP admin)', '- SSH, update GitHub, agen MantaPool: DIBLOKIR', '- Cetak (IPP 631) & AirPrint/mDNS: TETAP JALAN']
+      : ['- Scan / Scan Studio / scanner app: BLOCKED', '- Web pages & admin console: BLOCKED (except admin IPs)', '- SSH, GitHub updates, MantaPool agent: BLOCKED', '- Printing (IPP 631) & AirPrint/mDNS: KEEP WORKING'];
+    for (const b of blocks) left(`${ANSI.dim}${b}${ANSI.reset}`);
+    left('');
+    const sel0 = m.field === 0;
+    const ipLine = `${isId ? 'IP admin (opsional)' : 'Admin IP (optional)'}: [ ${(m.adminIp + (sel0 ? '█' : '')).padEnd(22, ' ')} ]`;
+    left(sel0 ? `${ANSI.bgCyan}${ANSI.black}${ANSI.bold} > ${ipLine} ${ANSI.reset}` : `   ${ipLine}`);
+    left(`${ANSI.dim}${isId ? 'Web admin hanya bisa dibuka dari IP/CIDR ini. Kosong = tidak ada.' : 'Admin web reachable only from this IP/CIDR. Empty = none.'}${ANSI.reset}`);
+    left(`${ANSI.dim}${isId ? 'Mematikan lockdown butuh PIN (bawaan 1234, ganti di web admin).' : 'Turning it off needs the PIN (default 1234; change it in admin).'}${ANSI.reset}`);
+  } else {
+    left(`${ANSI.brightYellow}${isId ? 'Firewall dilepas: scan, web, SSH, update & MantaPool aktif lagi.' : 'Firewall removed: scan, web, SSH, updates & MantaPool return.'}${ANSI.reset}`);
+    left('');
+    const sel0 = m.field === 0;
+    const pinLine = `PIN: [ ${('*'.repeat(m.pin.length) + (sel0 ? '█' : '')).padEnd(12, ' ')} ]`;
+    left(sel0 ? `${ANSI.bgCyan}${ANSI.black}${ANSI.bold} > ${pinLine} ${ANSI.reset}` : `   ${pinLine}`);
+  }
+  line('');
+  const selOk = m.field === 1, selCancel = m.field === 2;
+  const okTxt = on ? (isId ? '[ MATIKAN LOCKDOWN ]' : '[ TURN OFF ]') : (isId ? '[ AKTIFKAN LOCKDOWN ]' : '[ TURN ON ]');
+  const btnOk = selOk ? `${on ? ANSI.bgGreen : ANSI.bgRed}${ANSI.black}${ANSI.bold} ${okTxt} ${ANSI.reset}` : okTxt;
+  const btnCancel = selCancel ? `${ANSI.bgCyan}${ANSI.black}${ANSI.bold} [ ${isId ? 'BATAL' : 'CANCEL'} ] ${ANSI.reset}` : `[ ${isId ? 'Batal' : 'Cancel'} ]`;
+  line(`${btnOk}    ${btnCancel}`);
+  line(m.busy ? `${ANSI.brightYellow}${isId ? 'Menerapkan...' : 'Applying...'}${ANSI.reset}` : m.errorMsg ? `${ANSI.brightRed}${m.errorMsg.slice(0, modalW - 4)}${ANSI.reset}` : `${ANSI.dim}${isId ? 'Tab/↑↓ pindah · Enter pilih · Esc batal' : 'Tab/↑↓ move · Enter select · Esc cancel'}${ANSI.reset}`);
+  box.push(`└${'─'.repeat(modalW - 2)}┘`);
+
+  const modalH = box.length;
+  const startX = Math.max(1, Math.floor((W - modalW) / 2));
+  const startY = Math.max(1, Math.floor((H - modalH) / 2));
+  let overlayBuffer = '';
+  for (let r = 0; r < modalH; r++) {
+    overlayBuffer += ANSI.pos(startY + r + 1, startX + 1) + ANSI.brightCyan + box[r] + ANSI.reset;
+  }
+  return overlayBuffer;
+}
+
+function handleLockdownInput(str, key) {
+  const m = state.lockdown.modal;
+  if (m.busy) return;
+  if (key.name === 'escape') { m.open = false; return; }
+  if (key.name === 'tab' || key.name === 'down') { m.field = (m.field + 1) % 3; return; }
+  if (key.name === 'up') { m.field = (m.field + 2) % 3; return; }
+  if (key.name === 'left' && m.field === 2) { m.field = 1; return; }
+  if (key.name === 'right' && m.field === 1) { m.field = 2; return; }
+  if (m.field === 0) {
+    const on = state.lockdown.enabled;
+    if (key.name === 'backspace') { if (on) m.pin = m.pin.slice(0, -1); else m.adminIp = m.adminIp.slice(0, -1); }
+    else if (key.name === 'return' || key.name === 'enter') { m.field = 1; }
+    else if (str && str.length === 1 && !key.ctrl && !key.meta) {
+      if (on) { if (/\d/.test(str) && m.pin.length < 8) m.pin += str; }
+      else if (/[0-9./]/.test(str) && m.adminIp.length < 18) m.adminIp += str;
+    }
+    return;
+  }
+  if (key.name === 'return' || key.name === 'enter' || key.name === 'space') {
+    if (m.field === 2) { m.open = false; return; }
+    executeLockdownToggle();
+  }
+}
+
+async function executeLockdownToggle() {
+  const m = state.lockdown.modal;
+  const isId = state.language === 'id';
+  const on = state.lockdown.enabled;
+  m.busy = true; m.errorMsg = '';
+  renderFull();
+  const res = on
+    ? await safeFetch('/api/lockdown/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: m.pin }) }, 30000)
+    : await safeFetch('/api/lockdown/enable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m.adminIp.trim() ? { admin_ips: [m.adminIp.trim()] } : {}) }, 30000);
+  m.busy = false;
+  if (res && res.success) {
+    state.lockdown.enabled = !on;
+    m.open = false; m.pin = '';
+    const log = (msg) => { state.diagnostics.logLines.push(`[${new Date().toLocaleTimeString('id-ID')}] ${msg}`); if (state.diagnostics.logLines.length > 14) state.diagnostics.logLines.shift(); };
+    if (on) { log(isId ? '[OK] Lockdown DIMATIKAN. Semua layanan aktif kembali.' : '[OK] Lockdown turned OFF. All services are back.'); showBanner(isId ? '[OK] Lockdown dimatikan' : '[OK] Lockdown turned off', 'success', 6000); }
+    else {
+      log(isId ? '[OK] Lockdown AKTIF: hub hanya mencetak (IPP 631 + mDNS).' : '[OK] Lockdown ON: hub only prints (IPP 631 + mDNS).');
+      const ips = (res.status && res.status.admin_ips) || [];
+      log(isId ? `     Web admin: ${ips.length ? 'hanya dari ' + ips.join(', ') : 'TIDAK bisa diakses dari jaringan'}` : `     Admin web: ${ips.length ? 'only from ' + ips.join(', ') : 'NOT reachable from the network'}`);
+      showBanner(isId ? '[!] LOCKDOWN AKTIF - hanya cetak. PIN dibutuhkan untuk mematikan.' : '[!] LOCKDOWN ON - print only. PIN needed to turn off.', 'warn', 10000);
+    }
+  } else {
+    const code = res && res.code;
+    m.errorMsg = code === 'bad_pin' ? (isId ? 'PIN salah.' : 'Wrong PIN.')
+      : code === 'nft_missing' ? (isId ? 'nftables belum terpasang (pasang dari web admin > Driver).' : 'nftables not installed (install from admin > Drivers).')
+      : code === 'bad_admin_ip' ? (isId ? 'IP admin tidak valid.' : 'Invalid admin IP.')
+      : (res && (res.tail || res.message)) || (isId ? 'Gagal menerapkan.' : 'Failed to apply.');
+  }
+  renderFull();
+}
+
 // ==========================================
 // KEYBOARD & INPUT CONTROLLER
 // ==========================================
@@ -1755,6 +1878,12 @@ function setupKeyboardInput() {
 
     if (state.ethernet.confirmModal) {
       handleEthConfirmInput(str, key);
+      renderFull();
+      return;
+    }
+
+    if (state.lockdown.modal.open) {
+      handleLockdownInput(str, key);
       renderFull();
       return;
     }
@@ -2079,7 +2208,7 @@ function handleDiagnosticsInput(str, key) {
   if (key.name === 'up') {
     if (diag.selectedAction > 0) diag.selectedAction--;
   } else if (key.name === 'down') {
-    if (diag.selectedAction < 7) diag.selectedAction++;
+    if (diag.selectedAction < 8) diag.selectedAction++;
   } else if (key.name === 'return' || key.name === 'space') {
     runDiagnostic(diag.selectedAction);
   }

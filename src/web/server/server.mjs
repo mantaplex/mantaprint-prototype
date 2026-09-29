@@ -33,6 +33,7 @@ import { scannerHardwareLock, scannerPairingManager } from './scanner-pairing-ma
 import { getFirmwareStatus, getExtractionTools, pickWorkBase, freeBytes, receiveUpload, processFirmwareUpload } from './scanner-firmware.mjs';
 import { getHplipPluginStatus, hpPluginHint, installPluginFile, RUN_MAX_BYTES as HPLIP_RUN_MAX_BYTES, parseModelsDat as parseHplipModels, findModelEntry as findHplipModel, pluginNeed as hplipPluginNeed, MODELS_DAT as HPLIP_MODELS_DAT } from './hplip-plugin.mjs';
 import * as driverCenter from './driver-center.mjs';
+import * as lockdown from './lockdown.mjs';
 import { directConnect } from './direct-connect.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2727,6 +2728,7 @@ async function probePrinterTelemetry() {
       last_checked: applianceUpdater?.updateInfo?.last_checked || null,
       channel: applianceUpdater?.updateInfo?.channel || 'prototype'
     },
+    lockdown: lockdownSummary(),
     scanner_portal_enabled: configManager.getConfig()?.scanner?.portal_enabled !== false,
     scanner_pwa_api_enabled: configManager.getConfig()?.scanner?.remote_pwa_api_enabled !== false,
     queues
@@ -2864,6 +2866,18 @@ function startNetworkIpWatcher() {
 }
 
 // Single-flight in-flight collapsing with Stale-While-Revalidate (instant response)
+// Lockdown mode summary for /api/status: config is cheap; whether the nft table is really
+// loaded is checked at most every 30 s (it spawns nft).
+let lockdownApplied = { value: null, at: 0 };
+function lockdownSummary() {
+  const cfg = lockdown.loadConfig();
+  if (Date.now() - lockdownApplied.at > 30000) {
+    lockdownApplied.at = Date.now();
+    lockdown.isApplied().then((v) => { lockdownApplied.value = v; }).catch(() => {});
+  }
+  return { enabled: Boolean(cfg.enabled), applied: lockdownApplied.value, admin_ips: cfg.admin_ips || [], ssh_from_admin: Boolean(cfg.ssh_from_admin), pin_is_default: Boolean(cfg.pin_is_default), enabled_at: cfg.enabled_at, enabled_by: cfg.enabled_by };
+}
+
 async function getOrFetchStatus(forceFresh = false) {
   if (cachedStatus && !forceFresh && (Date.now() - lastStatusFetch <= 4000)) {
     return cachedStatus;
@@ -3672,6 +3686,43 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 9. ScanSnap (epjitsu) firmware: status + upload of a .nal or the installer holding it
+    // --- LOCKDOWN MODE (print-only) ---
+    // The console (loopback, i.e. the TUI) and admin sessions may switch it; turning it off
+    // needs the PIN either way. Config changes (admin IPs, SSH, PIN) need an admin session.
+    if (pathname === '/api/lockdown' && req.method === 'GET') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({ success: true, ...(await lockdown.getStatus()) }));
+      return;
+    }
+    if (pathname === '/api/lockdown/enable' && req.method === 'POST') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const r = await lockdown.enable({ by: isLoopbackRequest(req) && !isAdminAuthenticated(req) ? 'console' : 'admin', admin_ips: body.admin_ips, ssh_from_admin: body.ssh_from_admin });
+      if (r.ok) { console.log(`[Lockdown] ENABLED by ${isLoopbackRequest(req) ? 'console' : req.socket.remoteAddress}; admin IPs: ${(lockdown.loadConfig().admin_ips || []).join(', ') || 'none'}`); lockdownApplied = { value: true, at: Date.now() }; }
+      res.writeHead(r.ok ? 200 : 422, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: r.ok, ...r }));
+      return;
+    }
+    if (pathname === '/api/lockdown/disable' && req.method === 'POST') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const r = await lockdown.disable({ pin: String(body.pin || '') });
+      if (r.ok) { console.log(`[Lockdown] DISABLED by ${isLoopbackRequest(req) ? 'console' : req.socket.remoteAddress}`); lockdownApplied = { value: false, at: Date.now() }; }
+      else console.warn(`[Lockdown] disable refused (${r.code}) from ${req.socket.remoteAddress}`);
+      res.writeHead(r.ok ? 200 : r.code === 'bad_pin' ? 403 : 422, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: r.ok, ...r }));
+      return;
+    }
+    if (pathname === '/api/lockdown/config' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const r = await lockdown.updateConfig({ admin_ips: body.admin_ips, ssh_from_admin: body.ssh_from_admin, pin_current: body.pin_current, pin_new: body.pin_new });
+      res.writeHead(r.ok ? 200 : r.code === 'bad_pin' ? 403 : 422, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: r.ok, ...r }));
+      return;
+    }
+
     // --- DRIVER CENTER: Admin > Drivers & devices ---
     if (pathname === '/api/drivers/overview' && req.method === 'GET') {
       if (!isAdminOrLocal(req)) return denyAdmin(res);

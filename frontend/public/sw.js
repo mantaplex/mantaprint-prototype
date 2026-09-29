@@ -1,5 +1,5 @@
 // MantaPrint Hub Progressive Web App Service Worker
-const CACHE_NAME = 'mantaprint-app-v0.3.1';
+const CACHE_NAME = 'mantaprint-app-v0.3.2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

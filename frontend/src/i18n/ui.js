@@ -203,9 +203,109 @@ export const hubId = {
 
 export const admEn = {
   title: 'Admin',
-  common: { save: 'Save', saved: 'Saved.', refresh: 'Refresh', confirm: 'Confirm' },
+  common: { save: 'Save', saved: 'Saved.', refresh: 'Refresh', confirm: 'Confirm', loading: 'Loading…' },
   header: { home: 'Back to home', account: 'Account', logout: 'Log out', loggedOut: 'You have been logged out.', updateAvailable: 'Update available' },
-  nav: { overview: 'Overview', printers: 'Printers', queue: 'Queue', scanner: 'Scanner', network: 'Network', settings: 'Settings', updates: 'Updates' },
+  nav: { overview: 'Overview', printers: 'Printers', queue: 'Queue', scanner: 'Scanner', drivers: 'Drivers & devices', network: 'Network', settings: 'Settings', updates: 'Updates' },
+  drivers: {
+    title: 'Drivers & devices',
+    desc: 'Everything about device support in one place: what each connected device still needs, whether a model is supported, vendor files you upload, and packages from the Debian repositories.',
+    matchedFamily: 'Family',
+    downloadFromVendor: 'Download from the vendor',
+    uploadFor: 'Upload file for {name}',
+    uploadPpd: 'Upload a PPD instead',
+    pendingCreated: '{name} received. Review it below before it is installed.',
+    installedToast: '{name} installed.',
+    jobStarted: 'Started: {name}. Progress is shown at the top of this page.',
+    readiness: { ready: 'Ready', needs_firmware: 'Needs firmware', provisioning: 'Restarting…', needs_review: 'Needs review', unsupported: 'Not supported', needs_file: 'Needs a file from you', unknown: 'Not set up yet' },
+    status: { verified: 'Verified on hub hardware', available: 'Driver available (not hardware-tested)', needs_file: 'Needs a vendor file', unsupported: 'No Linux driver' },
+    how: { driverless: 'Driverless (IPP Everywhere)', package: 'Debian driver package', bundled: 'Bundled open-source driver', vendor_deb: 'Vendor .deb package', raw: 'Raw queue', sane: 'SANE backend', escl: 'eSCL (driverless scan)' },
+    kind: { nal: 'ScanSnap firmware', 'hplip-plugin': 'HP plugin', ppd: 'PPD file', deb: 'Debian package', dl: 'HP LaserJet firmware', archive: 'Installer archive', asc: 'Signature' },
+    need: {
+      dl: 'Needs HP LaserJet firmware (.dl)',
+      ppd: 'Needs a PPD or driver package for this exact model',
+      deb: 'Needs the vendor driver package {file}',
+      nal: 'Needs its firmware file {file}',
+      'hplip-plugin': 'Needs HP\'s scanner plugin {file}',
+      review: 'Only a best-guess driver was found; print a test page, or upload the exact PPD',
+      hplipMissing: 'HPLIP is not installed on this hub; install the "hplip" package below first.'
+    },
+    devices: { title: 'Your devices', none: 'No devices detected', noneDesc: 'Plug a printer or scanner into the hub, or add a network printer under Printers.' },
+    lookup: {
+      title: 'Check a model',
+      desc: 'Answered from this hub\'s own data (installed drivers, SANE, HPLIP, the catalog), so it works offline. Useful before buying or before a site visit.',
+      placeholder: 'e.g. Brother HL-L2320D, Canon LiDE 300, HP LaserJet MFP M130a',
+      go: 'Check',
+      families: 'Matching families in the catalog',
+      ppd: 'Installed printer drivers that match',
+      sane: 'Scanners SANE knows',
+      hpPlugin: 'This HP model needs HP\'s proprietary plugin for scanning.',
+      verdict: { supported: 'Supported', likely: 'Probably works', needs_file: 'Needs a vendor file', unsupported: 'Not supported', unknown: 'Unknown' },
+      verdictDesc: {
+        supported: 'A driver for this exact model is installed, or the family is verified.',
+        likely: 'A similar driver or a catalog entry exists, but this exact model has not been confirmed.',
+        needs_file: 'Works once you upload the vendor file below.',
+        unsupported: 'No Linux driver exists for this device.',
+        unknown: 'Nothing on this hub matches that name. Check the spelling, or try the vendor site.'
+      }
+    },
+    upload: {
+      title: 'Upload a driver, firmware or plugin',
+      desc: 'The hub recognises the file by its name and contents, then installs it or asks you to confirm.',
+      drop: 'Drop a file here, or choose one',
+      kinds: '.ppd / .ppd.gz · .deb · hplip-<version>-plugin.run (+ .asc) · sihpXXXX.dl · installer archives (.zip, .exe, .tar.gz, .7z). ScanSnap .nal files go to Scanner.',
+      pick: 'Choose file',
+      processing: 'Checking file…',
+      target: 'This upload is for: {name}',
+      rootWarning: 'Uploaded files are installed with root rights on this hub. Only upload files you downloaded from the vendor yourself. This is a prototype; see docs/KNOWN-LIMITATIONS.md.'
+    },
+    pending: { title: 'Waiting for your decision', review: 'Review & install', install: 'Install', discard: 'Discard', archiveDesc: '{n} installable file(s) found inside' },
+    confirm: {
+      title: 'Install this Debian package?',
+      warning: 'Installing a .deb runs the vendor\'s scripts as root on this hub. A tampered or malicious package can take over the device. Continue only if you downloaded this file from the vendor yourself.',
+      package: 'Package', arch: 'Architecture', maintainer: 'Maintainer', description: 'Description', depends: 'Depends on', scripts: 'Install scripts',
+      scriptsYes: 'Yes (runs as root)', scriptsNo: 'None',
+      archMismatch: '— does not match this hub ({host})',
+      license: 'By installing you accept the vendor\'s license for this software on this hub\'s behalf.',
+      go: 'Install as root'
+    },
+    job: {
+      'install-deb': 'Installing package {name}', 'install-ppd': 'Installing PPD {name}', 'install-dl': 'Installing firmware {name}', 'install-hplip-plugin': 'Installing HP plugin {name}', 'install-nal': 'Installing scanner firmware {name}',
+      'remove-deb': 'Removing package {name}', 'remove-ppd': 'Removing {name}', 'remove-dl': 'Removing {name}', 'remove-hplip-plugin': 'Removing record {name}', 'remove-nal': 'Removing record {name}',
+      'apt-install': 'Installing {name} from the Debian repositories',
+      running: 'Running… this can take a few minutes.', done: 'Finished.',
+      state: { running: 'Running', done: 'Done', failed: 'Failed' }
+    },
+    installed: { title: 'Installed by you', none: 'Nothing installed yet', noneDesc: 'Files you upload and packages you install from this page are listed here and survive hub updates.', remove: 'Remove', removeConfirm: 'Remove {name} from this hub?' },
+    apt: { title: 'Packages from the Debian repositories', desc: 'Needs internet access on the hub. Only this fixed list can be installed.', installed: 'Installed', install: 'Install' },
+    catalog: { title: 'Catalog', desc: 'Device families this hub knows about. "Verified" means tested on real hub hardware; "driver available" is a package claim, not a test.', show: 'Show catalog', hide: 'Hide', scan: 'Scan' },
+    errors: {
+      unknown_kind: 'The hub does not recognise this kind of file.',
+      use_scanner_firmware: 'ScanSnap firmware (.nal) is installed from the Scanner page.',
+      not_a_deb: 'That is not a valid Debian package.',
+      not_a_ppd: 'That is not a PPD file.',
+      ppd_invalid: 'cupstestppd rejected this PPD.',
+      bad_name: 'Unexpected file name.',
+      invalid_size: 'The file size does not look right for this kind of file.',
+      nothing_useful: 'No driver, firmware, PPD or package was found inside that archive.',
+      extract_failed: 'The hub could not unpack that archive.',
+      no_tools: 'Archive tools are missing on this hub (p7zip-full, cabextract).',
+      too_large: 'That file is too large.',
+      insufficient_space: 'Not enough free space on the hub.',
+      busy: 'Another install is still running.',
+      upload_failed: 'Upload failed. Check the connection and try again.',
+      not_allowed: 'That package is not on the allowed list.',
+      offline: 'The hub could not reach the Debian repositories (no internet).',
+      arch_mismatch: 'The package is built for another architecture.',
+      confirm_required: 'Confirmation is required.',
+      install_failed: 'The install did not finish successfully. See the log above.',
+      version_mismatch: 'Wrong plugin version: this hub needs {file}, you uploaded {v}.',
+      hplip_missing: 'HPLIP is not installed on this hub.',
+      not_a_plugin: 'That is not an HP plugin file.',
+      hp_plugin_missing: 'The hp-plugin tool is missing (package "hplip").',
+      exception: 'Unexpected error.',
+      generic: 'Something went wrong.'
+    }
+  },
   login: { title: 'Sign in to admin', desc: 'Manage printers, network and updates for this hub.', username: 'Username', password: 'Password', submit: 'Sign in', invalid: 'Wrong username or password.' },
   overview: {
     title: 'Overview',
@@ -322,6 +422,7 @@ export const admEn = {
       needsReview: 'Needs review',
       unsupported: 'Not supported',
       genericDesc: 'This queue was created, but has not been confirmed to print correctly yet.',
+      openDrivers: 'Open Drivers & devices',
       provisionNow: 'Provision firmware now',
       firmwareSent: 'Firmware sent — the printer is restarting its USB interface.',
       firmwareNotice: 'Downloaded from the same public HP firmware mirror the Debian foo2zjs package uses; not distributed by MantaPrint.',
@@ -423,7 +524,8 @@ export const admEn = {
     pairTitle: 'Pair a device',
     drivers: {
       title: 'Drivers & firmware',
-      desc: 'Vendor files the hub can\'t ship with: upload them here and the hub installs them. Uploaded files run as root on this hub; only upload files you downloaded from the vendor yourself.'
+      desc: 'Vendor files the hub can\'t ship with: upload them here and the hub installs them. Uploaded files run as root on this hub; only upload files you downloaded from the vendor yourself.',
+      openCenter: 'Open Drivers & devices'
     },
     hp: {
       installedTitle: 'HP plugin {v} installed',
@@ -639,9 +741,109 @@ export const admEn = {
 
 export const admId = {
   title: 'Admin',
-  common: { save: 'Simpan', saved: 'Tersimpan.', refresh: 'Muat ulang', confirm: 'Konfirmasi' },
+  common: { save: 'Simpan', saved: 'Tersimpan.', refresh: 'Muat ulang', confirm: 'Konfirmasi', loading: 'Memuat…' },
   header: { home: 'Kembali ke beranda', account: 'Akun', logout: 'Keluar', loggedOut: 'Anda telah keluar.', updateAvailable: 'Ada pembaruan' },
-  nav: { overview: 'Ringkasan', printers: 'Printer', queue: 'Antrean', scanner: 'Scanner', network: 'Jaringan', settings: 'Pengaturan', updates: 'Pembaruan' },
+  nav: { overview: 'Ringkasan', printers: 'Printer', queue: 'Antrean', scanner: 'Scanner', drivers: 'Driver & perangkat', network: 'Jaringan', settings: 'Pengaturan', updates: 'Pembaruan' },
+  drivers: {
+    title: 'Driver & perangkat',
+    desc: 'Semua soal dukungan perangkat di satu tempat: apa yang masih dibutuhkan tiap perangkat, apakah suatu model didukung, file vendor yang Anda unggah, dan paket dari repositori Debian.',
+    matchedFamily: 'Keluarga',
+    downloadFromVendor: 'Unduh dari vendor',
+    uploadFor: 'Unggah file untuk {name}',
+    uploadPpd: 'Unggah PPD saja',
+    pendingCreated: '{name} diterima. Periksa di bawah sebelum dipasang.',
+    installedToast: '{name} terpasang.',
+    jobStarted: 'Dimulai: {name}. Progresnya tampil di bagian atas halaman ini.',
+    readiness: { ready: 'Siap', needs_firmware: 'Butuh firmware', provisioning: 'Memulai ulang…', needs_review: 'Perlu dicek', unsupported: 'Tidak didukung', needs_file: 'Butuh file dari Anda', unknown: 'Belum disiapkan' },
+    status: { verified: 'Terverifikasi di hardware hub', available: 'Driver tersedia (belum dites di hardware)', needs_file: 'Butuh file vendor', unsupported: 'Tidak ada driver Linux' },
+    how: { driverless: 'Tanpa driver (IPP Everywhere)', package: 'Paket driver Debian', bundled: 'Driver open-source bawaan', vendor_deb: 'Paket .deb vendor', raw: 'Antrean raw', sane: 'Backend SANE', escl: 'eSCL (scan tanpa driver)' },
+    kind: { nal: 'Firmware ScanSnap', 'hplip-plugin': 'Plugin HP', ppd: 'File PPD', deb: 'Paket Debian', dl: 'Firmware HP LaserJet', archive: 'Arsip installer', asc: 'Tanda tangan' },
+    need: {
+      dl: 'Butuh firmware HP LaserJet (.dl)',
+      ppd: 'Butuh PPD atau paket driver untuk model persis ini',
+      deb: 'Butuh paket driver vendor {file}',
+      nal: 'Butuh file firmware {file}',
+      'hplip-plugin': 'Butuh plugin scanner HP {file}',
+      review: 'Hanya driver tebakan terbaik yang ditemukan; cetak halaman uji, atau unggah PPD yang persis',
+      hplipMissing: 'HPLIP belum terpasang di hub ini; pasang paket "hplip" di bawah lebih dulu.'
+    },
+    devices: { title: 'Perangkat Anda', none: 'Tidak ada perangkat terdeteksi', noneDesc: 'Colokkan printer atau scanner ke hub, atau tambahkan printer jaringan di menu Printer.' },
+    lookup: {
+      title: 'Cek dukungan model',
+      desc: 'Dijawab dari data hub ini sendiri (driver terpasang, SANE, HPLIP, katalog), jadi bekerja offline. Berguna sebelum membeli atau sebelum datang ke lokasi.',
+      placeholder: 'misal: Brother HL-L2320D, Canon LiDE 300, HP LaserJet MFP M130a',
+      go: 'Cek',
+      families: 'Keluarga yang cocok di katalog',
+      ppd: 'Driver printer terpasang yang cocok',
+      sane: 'Scanner yang dikenal SANE',
+      hpPlugin: 'Model HP ini butuh plugin proprietary HP untuk memindai.',
+      verdict: { supported: 'Didukung', likely: 'Kemungkinan jalan', needs_file: 'Butuh file vendor', unsupported: 'Tidak didukung', unknown: 'Tidak diketahui' },
+      verdictDesc: {
+        supported: 'Driver untuk model persis ini terpasang, atau keluarganya sudah terverifikasi.',
+        likely: 'Ada driver serupa atau entri katalog, tapi model persis ini belum dikonfirmasi.',
+        needs_file: 'Jalan setelah Anda mengunggah file vendor di bawah.',
+        unsupported: 'Tidak ada driver Linux untuk perangkat ini.',
+        unknown: 'Tidak ada data di hub ini yang cocok dengan nama itu. Periksa ejaannya, atau cek situs vendor.'
+      }
+    },
+    upload: {
+      title: 'Unggah driver, firmware, atau plugin',
+      desc: 'Hub mengenali file dari nama dan isinya, lalu memasangnya atau meminta konfirmasi Anda.',
+      drop: 'Jatuhkan file di sini, atau pilih file',
+      kinds: '.ppd / .ppd.gz · .deb · hplip-<versi>-plugin.run (+ .asc) · sihpXXXX.dl · arsip installer (.zip, .exe, .tar.gz, .7z). File .nal ScanSnap diunggah dari menu Scanner.',
+      pick: 'Pilih file',
+      processing: 'Memeriksa file…',
+      target: 'Unggahan ini untuk: {name}',
+      rootWarning: 'File yang diunggah dipasang dengan hak root di hub ini. Hanya unggah file yang Anda unduh sendiri dari vendornya. Ini prototype; lihat docs/KNOWN-LIMITATIONS.md.'
+    },
+    pending: { title: 'Menunggu keputusan Anda', review: 'Periksa & pasang', install: 'Pasang', discard: 'Buang', archiveDesc: '{n} file yang bisa dipasang ditemukan di dalamnya' },
+    confirm: {
+      title: 'Pasang paket Debian ini?',
+      warning: 'Memasang .deb menjalankan script vendor sebagai root di hub ini. Paket yang dimodifikasi atau berbahaya bisa mengambil alih perangkat. Lanjutkan hanya jika Anda mengunduh file ini sendiri dari vendornya.',
+      package: 'Paket', arch: 'Arsitektur', maintainer: 'Pemelihara', description: 'Deskripsi', depends: 'Bergantung pada', scripts: 'Script instalasi',
+      scriptsYes: 'Ada (berjalan sebagai root)', scriptsNo: 'Tidak ada',
+      archMismatch: '— tidak cocok dengan hub ini ({host})',
+      license: 'Dengan memasang, Anda menyetujui lisensi vendor untuk software ini atas nama hub ini.',
+      go: 'Pasang sebagai root'
+    },
+    job: {
+      'install-deb': 'Memasang paket {name}', 'install-ppd': 'Memasang PPD {name}', 'install-dl': 'Memasang firmware {name}', 'install-hplip-plugin': 'Memasang plugin HP {name}', 'install-nal': 'Memasang firmware scanner {name}',
+      'remove-deb': 'Menghapus paket {name}', 'remove-ppd': 'Menghapus {name}', 'remove-dl': 'Menghapus {name}', 'remove-hplip-plugin': 'Menghapus catatan {name}', 'remove-nal': 'Menghapus catatan {name}',
+      'apt-install': 'Memasang {name} dari repositori Debian',
+      running: 'Berjalan… bisa memakan beberapa menit.', done: 'Selesai.',
+      state: { running: 'Berjalan', done: 'Selesai', failed: 'Gagal' }
+    },
+    installed: { title: 'Dipasang oleh Anda', none: 'Belum ada yang dipasang', noneDesc: 'File yang Anda unggah dan paket yang Anda pasang dari halaman ini tercatat di sini dan tetap ada setelah hub diperbarui.', remove: 'Hapus', removeConfirm: 'Hapus {name} dari hub ini?' },
+    apt: { title: 'Paket dari repositori Debian', desc: 'Butuh akses internet di hub. Hanya daftar tetap ini yang bisa dipasang.', installed: 'Terpasang', install: 'Pasang' },
+    catalog: { title: 'Katalog', desc: 'Keluarga perangkat yang dikenal hub ini. "Terverifikasi" berarti sudah dites di hardware hub sungguhan; "driver tersedia" hanya klaim paket, bukan hasil tes.', show: 'Tampilkan katalog', hide: 'Sembunyikan', scan: 'Scan' },
+    errors: {
+      unknown_kind: 'Hub tidak mengenali jenis file ini.',
+      use_scanner_firmware: 'Firmware ScanSnap (.nal) dipasang dari halaman Scanner.',
+      not_a_deb: 'Itu bukan paket Debian yang valid.',
+      not_a_ppd: 'Itu bukan file PPD.',
+      ppd_invalid: 'cupstestppd menolak PPD ini.',
+      bad_name: 'Nama file tidak seperti yang diharapkan.',
+      invalid_size: 'Ukuran file tidak wajar untuk jenis file ini.',
+      nothing_useful: 'Tidak ada driver, firmware, PPD, atau paket di dalam arsip itu.',
+      extract_failed: 'Hub tidak bisa membongkar arsip itu.',
+      no_tools: 'Alat arsip tidak ada di hub ini (p7zip-full, cabextract).',
+      too_large: 'File terlalu besar.',
+      insufficient_space: 'Ruang kosong di hub tidak cukup.',
+      busy: 'Pemasangan lain masih berjalan.',
+      upload_failed: 'Unggahan gagal. Periksa koneksi lalu coba lagi.',
+      not_allowed: 'Paket itu tidak ada di daftar yang diizinkan.',
+      offline: 'Hub tidak bisa mencapai repositori Debian (tidak ada internet).',
+      arch_mismatch: 'Paket ini dibuat untuk arsitektur lain.',
+      confirm_required: 'Konfirmasi diperlukan.',
+      install_failed: 'Pemasangan tidak selesai dengan sukses. Lihat log di atas.',
+      version_mismatch: 'Versi plugin salah: hub ini butuh {file}, yang diunggah {v}.',
+      hplip_missing: 'HPLIP tidak terpasang di hub ini.',
+      not_a_plugin: 'Itu bukan file plugin HP.',
+      hp_plugin_missing: 'Alat hp-plugin tidak ada (paket "hplip").',
+      exception: 'Kesalahan tak terduga.',
+      generic: 'Terjadi kesalahan.'
+    }
+  },
   login: { title: 'Masuk ke admin', desc: 'Kelola printer, jaringan, dan pembaruan hub ini.', username: 'Nama pengguna', password: 'Kata sandi', submit: 'Masuk', invalid: 'Nama pengguna atau kata sandi salah.' },
   overview: {
     title: 'Ringkasan',
@@ -758,6 +960,7 @@ export const admId = {
       needsReview: 'Perlu diperiksa',
       unsupported: 'Tidak didukung',
       genericDesc: 'Antrean ini sudah dibuat, tapi belum dipastikan bisa mencetak dengan benar.',
+      openDrivers: 'Buka Driver & perangkat',
       provisionNow: 'Pasang firmware sekarang',
       firmwareSent: 'Firmware terkirim — printer sedang memulai ulang antarmuka USB-nya.',
       firmwareNotice: 'Diunduh dari mirror firmware HP publik yang sama dengan yang dipakai paket foo2zjs Debian; bukan didistribusikan oleh MantaPrint.',
@@ -859,7 +1062,8 @@ export const admId = {
     pairTitle: 'Pasangkan perangkat',
     drivers: {
       title: 'Driver & firmware',
-      desc: 'File vendor yang tidak bisa disertakan di hub: unggah di sini, hub yang memasangnya. File yang diunggah berjalan sebagai root di hub ini; hanya unggah file yang Anda unduh sendiri dari vendornya.'
+      desc: 'File vendor yang tidak bisa disertakan di hub: unggah di sini, hub yang memasangnya. File yang diunggah berjalan sebagai root di hub ini; hanya unggah file yang Anda unduh sendiri dari vendornya.',
+      openCenter: 'Buka Driver & perangkat'
     },
     hp: {
       installedTitle: 'Plugin HP {v} terpasang',

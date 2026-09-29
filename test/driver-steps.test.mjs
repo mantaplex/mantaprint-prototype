@@ -155,6 +155,30 @@ describe('driver-steps: connected devices', () => {
   });
 });
 
+describe('driver-steps: per-file rows', () => {
+  it('plugin step lists the signature (optional) and the .run with their own state', () => {
+    const r = byId['hp-mfp-hplip-plugin'];
+    let step = familySteps(r, { installed: new Set(r.apt), hplip: { hplip_installed: true, hplip_version: '3.22.10', required_file: 'hplip-3.22.10-plugin.run', plugin_installed: false } }).steps.find((s) => s.kind === 'plugin');
+    assert.deepEqual(step.files.map((f) => [f.id, f.name, f.done, Boolean(f.optional)]), [['asc', 'hplip-3.22.10-plugin.run.asc', false, true], ['run', 'hplip-3.22.10-plugin.run', false, false]]);
+    step = familySteps(r, { installed: new Set(r.apt), hplip: { hplip_installed: true, required_file: 'hplip-3.22.10-plugin.run', plugin_installed: false, asc_pending: true } }).steps.find((s) => s.kind === 'plugin');
+    assert.equal(step.files[0].done, true);
+    step = familySteps(r, { installed: new Set(r.apt), hplip: { hplip_installed: true, required_file: 'hplip-3.22.10-plugin.run', plugin_installed: true, plugin_matches: true, signature_verified: true } }).steps.find((s) => s.kind === 'plugin');
+    assert.deepEqual(step.files.map((f) => f.done), [true, true]);
+  });
+  it('firmware steps carry one row per file, narrowed on a device card', () => {
+    const r = byId['hp-laserjet-hostbased-firmware'];
+    const fam = familySteps(r, { installed: new Set(r.apt), hpfw: new Set(['sihp1020.dl']) }).steps.find((s) => s.kind === 'dl');
+    assert.ok(fam.files.length > 3);
+    assert.equal(fam.files.find((f) => f.name === 'sihp1020.dl').done, true);
+    const dev = deviceSteps({ type: 'printer', name: 'HP LaserJet 1018', queue: 'Q', connected: true, readiness: 'needs_firmware' }, r, { installed: new Set(r.apt), hpfw: new Set() }).steps.find((s) => s.kind === 'dl');
+    assert.deepEqual(dev.files.map((f) => [f.name, f.done]), [['sihp1018.dl', false]]);
+    const s = byId['fujitsu-scansnap-epjitsu'];
+    const nal = { devices: [{ model: 'ScanSnap S1300', filename: '1300_0C26.nal', usb_id: '04c5:11ed', installed: true, connected: true }, { model: 'ScanSnap S1100', filename: '1100_0A00.nal', usb_id: '04c5:1200', installed: false, connected: false }] };
+    const ns = familySteps(s, { installed: new Set(s.apt), nal }).steps.find((x) => x.kind === 'nal');
+    assert.deepEqual(ns.files.map((f) => [f.target, f.done, f.endpoint]), [['1300_0C26.nal', true, '/api/scanner/firmware'], ['1100_0A00.nal', false, '/api/scanner/firmware']]);
+  });
+});
+
 describe('driver-steps: helpers', () => {
   it('requiredPackageName takes the first dpkg name', () => {
     assert.equal(requiredPackageName({ package: 'brscan4 / <model>lpr' }), 'brscan4');

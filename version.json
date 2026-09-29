@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "semantic": {
     "major": 0,
     "minor": 3,
-    "patch": 9
+    "patch": 10
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.3.9"
+    "tag": "v0.3.10"
   },
   "build": {
-    "timestamp": "2026-09-29T17:00:00Z",
+    "timestamp": "2026-09-29T18:00:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,14 +22,14 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Drivers & devices: steps that need several files (HP plugin .asc + .run, HP LaserJet .dl per model, ScanSnap .nal per scanner) show one row per file with its own upload button and a check mark once it is on the hub.",
     "Fix: uploading the HPLIP plugin's .asc signature before the .run failed with 'Upload failed' (its folder did not exist yet).",
-    "Fix: uploading the HPLIP plugin hung at 'Checking file' forever (hp-plugin's license prompt looped on a closed stdin); hp-plugin now runs under a pseudo-terminal as a background job with a live log.",
-    "Drivers & devices is a checklist run in place: every connected device and catalog family gets its ordered steps (support packages, vendor .deb, HP plugin, ScanSnap .nal, HP LaserJet firmware, PPD fallback, verify) with done/todo/blocked state and the action on each open step; HP LaserJet 1000-P1505 firmware can be fetched from the page and is kept across OTA updates."
+    "Fix: uploading the HPLIP plugin hung at 'Checking file' forever (hp-plugin's license prompt looped on a closed stdin); hp-plugin now runs under a pseudo-terminal as a background job with a live log."
   ],
   "components": {
-    "core": "0.3.9",
-    "web": "0.3.9",
-    "frontend": "0.3.9",
+    "core": "0.3.10",
+    "web": "0.3.10",
+    "frontend": "0.3.10",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

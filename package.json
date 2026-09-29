@@ -1,6 +1,6 @@
 {
   "name": "mantaprint",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "MantaPrint Hub - Universal Multi-Device USB-to-Wireless Print & Scan Hub for Legacy Printers",
   "main": "src/web/server/server.mjs",
   "type": "module",

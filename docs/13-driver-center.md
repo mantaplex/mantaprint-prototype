@@ -66,7 +66,7 @@ file by name and contents:
    |---|---|
    | `.ppd` / `.ppd.gz` | validated (`*PPD-Adobe` header, `cupstestppd`), copied to `/usr/share/cups/model/mantaprint-uploads/`, optionally assigned to the target queue with `lpadmin -P` |
    | `sihpXXXX.dl` | HP LaserJet firmware, copied to the firmware cache and the `foo2zjs` firmware dirs; the target queue is re-provisioned |
-   | `hplip-<v>-plugin.run` (+ `.run.asc`) | `hp-plugin -i -p`, version must equal the installed HPLIP |
+   | `hplip-<v>-plugin.run` (+ `.run.asc`) | `hp-plugin -i -p` under a pseudo-terminal (its yes/no prompts are answered as they appear; HPLIP's prompt loops forever on a closed stdin), as a background job with a live log; version must equal the installed HPLIP |
    | `.deb` | inspected (`dpkg-deb -f`, architecture vs `dpkg --print-architecture`, maintainer scripts present?) and **staged as pending**; installed only after `POST /api/drivers/pending/install` with `confirm: true` (`dpkg -i`, then `apt-get -f install` for dependencies) |
    | installer archives (`.zip`, `.exe`, `.msi`, `.cab`, `.7z`, `.tar.gz`, …) | unpacked with 7z/cabextract/unshield up to three levels; the driver-ish files inside are listed as a pending item to pick from |
    | `.nal` | rejected here; ScanSnap firmware goes through the `nal` step (`/api/scanner/firmware`, which knows its targets) |

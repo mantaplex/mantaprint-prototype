@@ -100,7 +100,7 @@ function UploadAction({ action, step, ctx, api, t }) {
     const queue = action.queue || ctx?.queue;
     if (queue && action.endpoint === '/api/drivers/upload') qs.set('queue', queue);
     if (action.endpoint === '/api/scanner/firmware' && target) qs.set('target', target);
-    if (action.expect === 'hplip-plugin' && /\.asc$/i.test(file.name)) { qs.delete('queue'); }
+    if (action.expect === 'hplip-plugin' && /\.asc$/i.test(file.name)) { qs.delete('queue'); qs.set('kind', 'asc'); }
     const url = `${action.endpoint}${qs.toString() ? `?${qs}` : ''}`;
     setPhase(0);
     try {
@@ -509,7 +509,8 @@ export default function Drivers({ showToast }) {
     errorText,
     reload: load,
     afterUpload: (body, file) => {
-      if (body.pending && body.kind === 'deb') setConfirm({ id: body.pending.id, file: { kind: 'deb', name: body.pending.name, sha256: body.pending.sha256, info: body.pending.info } });
+      if (body.job) showToast?.(t('adm.drivers.jobStarted', { name: file.name }), 'success');
+      else if (body.pending && body.kind === 'deb') setConfirm({ id: body.pending.id, file: { kind: 'deb', name: body.pending.name, sha256: body.pending.sha256, info: body.pending.info } });
       else if (body.pending) showToast?.(t('adm.drivers.pendingCreated', { name: file.name }), 'success');
       else if (body.stored === 'asc') showToast?.(t('adm.drivers.step.plugin.ascStored'), 'success');
       else showToast?.(t('adm.drivers.installedToast', { name: file.name }), 'success');

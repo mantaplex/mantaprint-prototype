@@ -164,7 +164,8 @@ function HpPluginUpload({ hp, onDone, showToast }) {
     setPhase(0);
     try {
       const body = await uploadRaw('/api/drivers/hplip/plugin', file, (p) => setPhase(p >= 100 ? 'installing' : p));
-      if (body.success) showToast?.(t('adm.scanner.hp.installed', { v: body.version }), 'success');
+      if (body.success && body.job) showToast?.(t('adm.scanner.hp.jobStarted'), 'success');
+      else if (body.success) showToast?.(t('adm.scanner.hp.installed', { v: body.version }), 'success');
       else { setError(hpErrorText(t, body)); if (body.tail) setDetail(body.tail); }
     } catch { setError(hpErrorText(t, { code: 'upload_failed' })); }
     finally { setPhase(null); onDone?.(); }

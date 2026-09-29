@@ -114,3 +114,25 @@ describe('hplip-plugin: install guard rails', () => {
     assert.deepEqual(r, { ok: false, code: 'not_a_plugin' });
   });
 });
+
+describe('hplip-plugin: runWithTty', () => {
+  it('answers nested yes/no prompts through a pseudo-terminal and streams the log', async () => {
+    const { runWithTty, PROMPT_RE } = await import('../src/web/server/hplip-plugin.mjs');
+    const py = 'import subprocess\nprint("Do you still want to install the plug-in? (y=yes, n=no*, q=quit) ? ", end="", flush=True)\na=input()\nprint("parent got", a)\nsubprocess.call(["python3", "-c", "print(\\"Do you accept the license terms for the plug-in (y=yes*, n=no, q=quit) ? \\", end=\\"\\", flush=True); b=input(); print(\\"child got\\", b)"])\n';
+    const lines = [];
+    const r = await runWithTty('python3', ['-c', py], { timeoutMs: 20000, onLine: (l) => lines.push(l) });
+    assert.equal(r.code, 0);
+    assert.equal(r.answers, 2);
+    assert.ok(lines.some((l) => l.includes('parent got y')), lines.join('|'));
+    assert.ok(lines.some((l) => l.includes('child got y')), lines.join('|'));
+    assert.ok(!PROMPT_RE.test('Downloading plug-in: [\\\\      ] 10%'));
+  });
+  it('kills the installer and its children on timeout', async () => {
+    const { runWithTty, descendants } = await import('../src/web/server/hplip-plugin.mjs');
+    const t0 = Date.now();
+    const r = await runWithTty('sh', ['-c', 'sleep 30 & sleep 30'], { timeoutMs: 1500, onLine: () => {} });
+    assert.notEqual(r.code, 0);
+    assert.ok(Date.now() - t0 < 5000);
+    assert.deepEqual(descendants(process.pid).filter((p) => { try { return fs.readFileSync(`/proc/${p}/cmdline`, 'utf8').includes('sleep'); } catch { return false; } }), []);
+  });
+});

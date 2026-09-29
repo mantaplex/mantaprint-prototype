@@ -533,6 +533,9 @@ export const admEn = {
     },
     hp: {
       installedTitle: 'HP plugin {v} installed',
+      installedDesc: 'Scanning through HPLIP is enabled. Nothing more to upload; manage or replace the plugin under Drivers & devices.',
+      installedPill: 'Installed',
+      versionOff: 'Plugin {v} does not match HPLIP {h}',
       noneInstalled: 'HP plugin not installed',
       noHplip: 'HPLIP is not installed on this hub',
       noHplipDesc: 'The HP driver suite (package "hplip") is missing, so the plugin cannot be installed. Reinstall the hub with a current installer, or install the package by hand.',
@@ -1096,6 +1099,9 @@ export const admId = {
     },
     hp: {
       installedTitle: 'Plugin HP {v} terpasang',
+      installedDesc: 'Pemindaian lewat HPLIP sudah aktif. Tidak ada lagi yang perlu diunggah; kelola atau ganti plugin di Driver & perangkat.',
+      installedPill: 'Terpasang',
+      versionOff: 'Plugin {v} tidak cocok dengan HPLIP {h}',
       noneInstalled: 'Plugin HP belum terpasang',
       noHplip: 'HPLIP tidak terpasang di hub ini',
       noHplipDesc: 'Paket driver HP ("hplip") tidak ada, jadi plugin tidak bisa dipasang. Instal ulang hub dengan installer terbaru, atau pasang paketnya secara manual.',

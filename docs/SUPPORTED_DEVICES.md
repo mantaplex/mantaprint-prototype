@@ -2,6 +2,9 @@
 
 This document provides the complete, authoritative compatibility list of printers and scanners verified, tested, bundled, and automatically provisioned by **MantaPrint Hub**.
 
+> [!TIP]
+> The live version of this list is **Admin → Drivers & devices** on the hub: it shows what each connected device still needs, answers "is model X supported?" from the hub's own data, and takes the vendor files (PPD, `.deb`, HP plugin, firmware) the hub can't ship with. Its catalog comes from `src/web/server/driver-recipes.json`; update that file when this document changes.
+
 > [!NOTE]
 > ### Reading "Auto-Provisioned" / "Plug-and-Play" below
 > Only **Canon G3030 and Canon LBP6030** have been verified on real appliance hardware (see the

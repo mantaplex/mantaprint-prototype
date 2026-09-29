@@ -40,7 +40,7 @@ export function readinessReasonText(p, t) {
   return t(`adm.printers.readiness.reasons.${p.readiness_reason}`, { detail: p.readiness_detail || '' });
 }
 
-function PrinterSheet({ printer, broadcastName, onClose, refresh, showToast }) {
+function PrinterSheet({ printer, broadcastName, onClose, refresh, showToast, go }) {
   const { t } = useI18n();
   const q = printer.queue_name || printer.name;
   const [form, setForm] = useState({
@@ -123,6 +123,7 @@ function PrinterSheet({ printer, broadcastName, onClose, refresh, showToast }) {
                 <p className="mt-2 text-[11px] text-slate-500">{t('adm.printers.readiness.firmwareNotice')}</p>
               </>
             )}
+            {go && <Button size="sm" variant="secondary" className="mt-3" onClick={() => go('drivers')}>{t('adm.printers.readiness.openDrivers')}</Button>}
           </Card>
         )}
 
@@ -449,7 +450,7 @@ function NetworkDiscovery({ refresh, showToast }) {
   );
 }
 
-export default function Printers({ data, refresh, showToast }) {
+export default function Printers({ data, refresh, showToast, go }) {
   const { t } = useI18n();
   const [openQueue, setOpenQueue] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -529,7 +530,7 @@ export default function Printers({ data, refresh, showToast }) {
 
       <NetworkDiscovery refresh={refresh} showToast={showToast} />
 
-      {open && <PrinterSheet key={openQueue} printer={open} broadcastName={names[openQueue] || ''} onClose={() => setOpenQueue(null)} refresh={refresh} showToast={showToast} />}
+      {open && <PrinterSheet go={go} key={openQueue} printer={open} broadcastName={names[openQueue] || ''} onClose={() => setOpenQueue(null)} refresh={refresh} showToast={showToast} />}
       {adding && <AddPrinterModal onClose={() => setAdding(false)} refresh={refresh} showToast={showToast} />}
     </div>
   );

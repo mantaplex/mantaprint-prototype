@@ -219,7 +219,7 @@ function FirmwareNeeded({ fw, device, onDone, showToast }) {
   );
 }
 
-export default function Scanner({ data, showToast }) {
+export default function Scanner({ data, showToast, go }) {
   const { t, lang } = useI18n();
   const [status, setStatus] = useState(null);
   const [clients, setClients] = useState([]);
@@ -288,7 +288,7 @@ export default function Scanner({ data, showToast }) {
 
       {(fw || hp) && (
         <div className="mt-6">
-          <SectionLabel>{t('adm.scanner.drivers.title')}</SectionLabel>
+          <SectionLabel right={<Button size="sm" variant="ghost" onClick={() => go?.('drivers')}>{t('adm.scanner.drivers.openCenter')}</Button>}>{t('adm.scanner.drivers.title')}</SectionLabel>
           <p className="text-xs text-slate-500 mb-2">{t('adm.scanner.drivers.desc')}</p>
           <List>
             {fw && !needsFw && (

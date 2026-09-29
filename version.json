@@ -1,16 +1,16 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.5.1",
+  "version": "0.3.5",
   "semantic": {
     "major": 0,
-    "minor": 5,
-    "patch": 1
+    "minor": 3,
+    "patch": 5
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.5.1"
+    "tag": "v0.3.5"
   },
   "build": {
     "timestamp": "2026-09-29T10:00:00Z",
@@ -27,9 +27,9 @@
     "Driver Center (phase 1): Admin > Scanner gains a 'Drivers & firmware' area. HP multifunction printers whose scanner needs HP's proprietary HPLIP plugin (e.g. LaserJet MFP M130a) are detected from HPLIP's own models.dat and shown as 'needs HP plugin' with the exact file to download; the admin uploads it (optionally with HP's .asc signature) and the hub installs it with hp-plugin and re-probes."
   ],
   "components": {
-    "core": "0.5.1",
-    "web": "0.5.1",
-    "frontend": "0.5.1",
+    "core": "0.3.5",
+    "web": "0.3.5",
+    "frontend": "0.3.5",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

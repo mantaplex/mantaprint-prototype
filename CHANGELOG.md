@@ -12,14 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.1] - 2026-09-29
+> Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
+> (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
+
+## [0.3.5] - 2026-09-29
 
 ### Fixed
 - **Drivers & devices jobs reported "Unexpected error" although the install had succeeded.** After a successful apt install, `.deb` install or HP firmware (`.dl`) upload, the hub re-syncs printer queues by calling `printer_manager.py`; that call used a misnamed helper (`printerManagerPath` instead of `printerManagerScript`), which threw and marked the job failed. Found on the first real run (`hplip` from the apt list on a Pi 3). The job card now also shows the exception message, and job exceptions are logged with their stack.
 
 ---
 
-## [0.5.0] - 2026-09-29
+## [0.3.4] - 2026-09-29
 
 **Lockdown mode (print-only).** For sites where the hub must expose as little as possible: one
 switch that leaves only printing reachable. See `docs/14-lockdown-mode.md`.
@@ -37,7 +40,7 @@ switch that leaves only printing reachable. See `docs/14-lockdown-mode.md`.
 
 ---
 
-## [0.4.0] - 2026-09-29
+## [0.3.3] - 2026-09-29
 
 **Driver Center.** A new admin page, *Drivers & devices*, gathers everything about device support:
 what each connected device still needs, an offline "is model X supported?" check, uploads of vendor

@@ -31,6 +31,8 @@ import { configManager } from './config-manager.mjs';
 import { applianceUpdater, UpdaterState } from './updater.mjs';
 import { scannerHardwareLock, scannerPairingManager } from './scanner-pairing-manager.mjs';
 import { getFirmwareStatus, getExtractionTools, pickWorkBase, freeBytes, receiveUpload, processFirmwareUpload } from './scanner-firmware.mjs';
+import { getHplipPluginStatus, hpPluginHint, installPluginFile, RUN_MAX_BYTES as HPLIP_RUN_MAX_BYTES, parseModelsDat as parseHplipModels, findModelEntry as findHplipModel, pluginNeed as hplipPluginNeed, MODELS_DAT as HPLIP_MODELS_DAT } from './hplip-plugin.mjs';
+import * as driverCenter from './driver-center.mjs';
 import { directConnect } from './direct-connect.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -717,6 +719,26 @@ const SCANNER_PROFILES = [
     supported_paper_sizes: ['A4', 'Letter', 'ID Card'],
     usb_id: '04a9:18da',
     match: /(g3030|g3000|pixma.*g3|04a9:18da)/i
+  },
+  {
+    // Any HP multifunction on SANE's hpaio backend (LaserJet MFP M130a and friends). Most need
+    // HP's proprietary plugin before hpaio lists them; see hplip-plugin.mjs.
+    id: 'hp-mfp-hpaio',
+    name: 'HP multifunction (HPLIP)',
+    vendor: 'HP',
+    model: 'LaserJet / DeskJet / OfficeJet MFP',
+    driver: 'hpaio',
+    type: 'Flatbed',
+    sources: ['Flatbed'],
+    has_adf: false,
+    duplex_capable: false,
+    resolutions: [75, 150, 300, 600],
+    modes: ['Color', 'Gray'],
+    formats: ['pdf', 'jpeg', 'png', 'tiff'],
+    max_geometry: { width: 216, height: 297 },
+    supported_paper_sizes: ['A4', 'Letter', 'ID Card'],
+    usb_id: '03f0:*',
+    match: /(^|[^a-z])hpaio:|hewlett|(^|\s)hp(\s|_).*(mfp|laserjet|deskjet|officejet|envy|smart tank)/i
   }
 ];
 
@@ -757,6 +779,7 @@ let cachedScanner = null;
 let lastScannerProbe = 0;
 let isProbingScanner = false;
 let scannerFirmwareBusy = false;
+let hplipPluginBusy = false;
 
 // epjitsu.conf names models tersely ("Fujitsu S1300"); prefer our profile's full name.
 function scannerModelName(usbId, fallback) {
@@ -784,7 +807,17 @@ function scannerFirmwareHint() {
 function withFirmwareHint(state) {
   const hint = scannerFirmwareHint();
   if (hint) state.firmware_required = hint;
+  // An HP MFP whose scanner needs HP's plugin is likewise invisible to scanimage.
+  if (!state.connected && lastHpPluginHint) state.plugin_required = lastHpPluginHint;
   return state;
+}
+
+// Refreshed on every scanner probe (sysfs + models.dat + dpkg, a few ms) so the hint is
+// current by the time withFirmwareHint() runs synchronously.
+let lastHpPluginHint = null;
+async function refreshHpPluginHint() {
+  lastHpPluginHint = await hpPluginHint();
+  return lastHpPluginHint;
 }
 
 function getInitialScannerState() {
@@ -827,6 +860,7 @@ async function probeScannerTelemetry(forceFresh = false) {
   isProbingScanner = true;
 
   try {
+    await refreshHpPluginHint().catch(() => {});
     // 1. Direct probe to local eSCL endpoint (e.g. ipp-usb on 127.0.0.1:60000)
     try {
       const resp = await fetch('http://127.0.0.1:60000/eSCL/ScannerCapabilities', {
@@ -2892,6 +2926,10 @@ setInterval(() => {
 }, 30000);
 
 // Safe body parser with strict maximum size limit and abort handling
+async function readJsonBody(req, maxBytes = 64 * 1024) {
+  return parseJsonBody(await readBody(req, maxBytes)) || {};
+}
+
 function readBody(req, maxBytes = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -3634,6 +3672,295 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 9. ScanSnap (epjitsu) firmware: status + upload of a .nal or the installer holding it
+    // --- DRIVER CENTER: Admin > Drivers & devices ---
+    if (pathname === '/api/drivers/overview' && req.method === 'GET') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      const [status, hp, apt] = await Promise.all([getOrFetchStatus(), getHplipPluginStatus(), driverCenter.aptStatus()]);
+      const { recipes } = driverCenter.loadRecipes();
+      const firmware = scannerFirmwareStatus();
+      const installed = new Set(apt.packages.filter(p => p.installed).map(p => p.name));
+      for (const i of driverCenter.readRegistry().items) if (i.kind === 'deb' && i.package) installed.add(i.package);
+      const devices = driverCenter.deviceNeeds({ printers: status.printers || [], scanner: status.scanner, hp, firmware, usb: getConnectedUsbPrinters(), recipes, installed });
+      const tools = getExtractionTools();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({
+        success: true,
+        devices,
+        catalog: recipes.map(driverCenter.publicRecipe),
+        installed: driverCenter.readRegistry().items,
+        pending: driverCenter.listPending(),
+        apt,
+        hplip: { installed: hp.hplip_installed, version: hp.hplip_version, plugin_installed: hp.plugin_installed, plugin_version: hp.plugin_version, required_file: hp.required_file, download_url: hp.download_url },
+        tools: { archive: Boolean(tools.sevenZip), cab: Boolean(tools.cabextract), installshield: Boolean(tools.unshield) },
+        job: driverCenter.getJob(),
+        max_upload_bytes: driverCenter.UPLOAD_MAX_BYTES,
+        host_architecture: await driverCenter.hostArchitecture()
+      }));
+      return;
+    }
+
+    if (pathname === '/api/drivers/lookup' && req.method === 'GET') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      const q = String(url.searchParams.get('q') || '').slice(0, 120);
+      let models = null;
+      try { models = parseHplipModels(fs.readFileSync(HPLIP_MODELS_DAT, 'utf8')); } catch {}
+      const result = driverCenter.lookupModel(q, { models, findModelEntry: findHplipModel, pluginNeed: hplipPluginNeed });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({ success: true, ...result }));
+      return;
+    }
+
+    if (pathname === '/api/drivers/job' && req.method === 'GET') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
+      return;
+    }
+
+    // Generic upload: the hub classifies the file. Low-risk kinds (.nal, .ppd, .dl, hplip
+    // plugin) install right away; a .deb or an installer archive becomes a pending item the
+    // admin confirms (or picks from) with the details in view.
+    if (pathname === '/api/drivers/upload' && req.method === 'POST') {
+      const reply = (code, body) => {
+        if (res.headersSent) return;
+        res.writeHead(code, { 'Content-Type': 'application/json', ...(req.complete ? {} : { Connection: 'close' }) });
+        res.end(JSON.stringify(body));
+      };
+      if (!isAdminAuthenticated(req)) return reply(401, { success: false, code: 'unauthorized' });
+      if (driverCenter.jobBusy() || scannerFirmwareBusy || hplipPluginBusy) return reply(409, { success: false, code: 'busy' });
+      const length = Number(req.headers['content-length']);
+      if (!Number.isFinite(length) || length <= 0) return reply(411, { success: false, code: 'length_required' });
+      if (length > driverCenter.UPLOAD_MAX_BYTES) return reply(413, { success: false, code: 'too_large', max_upload_bytes: driverCenter.UPLOAD_MAX_BYTES });
+      let fileName = '';
+      try { fileName = path.basename(decodeURIComponent(String(req.headers['x-file-name'] || ''))).slice(0, 200); } catch {}
+      const kind = driverCenter.classifyUpload(fileName);
+      if (kind === 'unknown') return reply(422, { success: false, code: 'unknown_kind', file: fileName });
+      // .nal and the HP plugin keep their dedicated handlers (they know their targets).
+      if (kind === 'nal') return reply(422, { success: false, code: 'use_scanner_firmware' });
+      const base = pickWorkBase();
+      const keep = path.join(base.dir, 'drivers');
+      let work = null;
+      try {
+        fs.mkdirSync(keep, { recursive: true, mode: 0o700 });
+        if (freeBytes(keep) < length * (kind === 'archive' ? 4 : 1) + 64 * 1024 * 1024) return reply(507, { success: false, code: 'insufficient_space' });
+        work = fs.mkdtempSync(path.join(keep, 'up-'));
+        const filePath = path.join(work, fileName.replace(/[^A-Za-z0-9_.+-]/g, '_'));
+        try { await receiveUpload(req, filePath, length); } catch (err) { fs.rmSync(work, { recursive: true, force: true }); return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+        const sha256 = await driverCenter.sha256File(filePath);
+        const target = String(url.searchParams.get('queue') || '');
+
+        if (kind === 'hplip-plugin' || kind === 'asc') {
+          if (kind === 'asc') { fs.renameSync(filePath, path.join(keep, 'hplip', 'pending.asc')); fs.rmSync(work, { recursive: true, force: true }); return reply(200, { success: true, kind, stored: 'asc' }); }
+          hplipPluginBusy = true;
+          try {
+            const asc = path.join(keep, 'hplip', 'pending.asc');
+            const result = await installPluginFile({ filePath, fileName, ascPath: fs.existsSync(asc) ? asc : null, log: (l) => console.log(`[Drivers] ${l.split('\n')[0].slice(0, 200)}`) });
+            if (result.ok) {
+              driverCenter.addRecord({ kind, name: fileName, version: result.version, sha256, size: length, note: 'HPLIP proprietary plugin', path: null });
+              await probeScannerTelemetry(true).catch(() => {});
+            }
+            fs.rmSync(work, { recursive: true, force: true });
+            return reply(result.ok ? 200 : 422, { success: result.ok, kind, ...result });
+          } finally { hplipPluginBusy = false; }
+        }
+
+        if (kind === 'ppd') {
+          const r = await driverCenter.installPpd(filePath, fileName);
+          fs.rmSync(work, { recursive: true, force: true });
+          if (!r.ok) return reply(422, { success: false, kind, ...r });
+          const rec = driverCenter.addRecord({ kind, name: r.name, version: '', sha256, size: length, note: r.nickname, path: r.path, target: target || null });
+          let assigned = null;
+          if (target) assigned = await driverCenter.assignPpdToQueue(target, r.path);
+          return reply(200, { success: true, kind, ...r, record: rec, assigned });
+        }
+
+        if (kind === 'dl') {
+          const r = driverCenter.installDl(filePath, fileName);
+          fs.rmSync(work, { recursive: true, force: true });
+          if (!r.ok) return reply(422, { success: false, kind, ...r });
+          driverCenter.addRecord({ kind, name: r.name, version: '', sha256, size: length, note: 'HP LaserJet firmware (foo2zjs)', path: r.paths[0] });
+          if (target) runCmd('/usr/bin/python3', [printerManagerPath(), 'provision-firmware', target], 120000).catch(() => {});
+          return reply(200, { success: true, kind, ...r });
+        }
+
+        if (kind === 'deb') {
+          const info = await driverCenter.inspectDeb(filePath);
+          if (!info.ok) { fs.rmSync(work, { recursive: true, force: true }); return reply(422, { success: false, kind, ...info }); }
+          const item = driverCenter.addPending({ kind, name: fileName, size: length, sha256, path: filePath, workDir: work, info, target: target || null });
+          return reply(200, { success: true, kind, pending: { id: item.id, name: fileName, size: length, sha256, info } });
+        }
+
+        // archive
+        const un = await driverCenter.unpackArchive(filePath, work, { maxBytes: Math.max(0, freeBytes(keep) - 64 * 1024 * 1024) });
+        if (un.code !== 'ok') { fs.rmSync(work, { recursive: true, force: true }); return reply(422, { success: false, kind, code: un.code === 'no_match' ? 'nothing_useful' : un.code }); }
+        const files = [];
+        for (const f of un.files) files.push({ ...f, sha256: await driverCenter.sha256File(f.path), info: f.kind === 'deb' ? await driverCenter.inspectDeb(f.path) : null });
+        const item = driverCenter.addPending({ kind, name: fileName, size: length, sha256, path: filePath, workDir: work, files, target: target || null });
+        return reply(200, { success: true, kind, pending: { id: item.id, name: fileName, files: files.map(({ path: _p, ...f }) => f) } });
+      } catch (err) {
+        console.error('[Drivers] Upload failed:', err.message);
+        try { if (work) fs.rmSync(work, { recursive: true, force: true }); } catch {}
+        return reply(500, { success: false, code: 'upload_failed' });
+      }
+    }
+
+    // Confirmed install of a pending item (a .deb, or one file out of an unpacked archive).
+    if (pathname === '/api/drivers/pending/install' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const item = driverCenter.getPending(String(body.id || ''));
+      if (!item) { res.writeHead(404, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'not_found' })); }
+      let file = null;
+      if (item.kind === 'deb') file = { kind: 'deb', name: item.name, path: item.path, sha256: item.sha256, size: item.size, info: item.info };
+      else file = (item.files || []).find(f => f.sha256 === String(body.sha256 || '')) || null;
+      if (!file) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'bad_file' })); }
+      if (file.kind === 'deb' && body.confirm !== true) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'confirm_required' })); }
+      if (file.kind === 'deb' && file.info && !file.info.arch_ok && body.force !== true) { res.writeHead(422, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'arch_mismatch', info: file.info })); }
+      const target = String(body.queue || item.target || '');
+      const job = driverCenter.startJob(`install-${file.kind}`, file.name, async (log) => {
+        if (file.kind === 'deb') {
+          const r = await driverCenter.installDeb(file.path, { log });
+          if (r.ok) {
+            const keepDir = path.join(pickWorkBase().dir, 'drivers', 'deb');
+            fs.mkdirSync(keepDir, { recursive: true, mode: 0o700 });
+            const kept = path.join(keepDir, `${file.info.package}_${file.info.version}_${file.info.architecture}.deb`.replace(/[^A-Za-z0-9_.+-]/g, '_'));
+            try { fs.copyFileSync(file.path, kept); } catch {}
+            driverCenter.addRecord({ kind: 'deb', name: file.name, package: file.info.package, version: file.info.version, architecture: file.info.architecture, maintainer: file.info.maintainer, sha256: file.sha256, size: file.size, path: kept, target: target || null });
+            runCmd('/usr/bin/python3', [printerManagerPath(), 'sync'], 120000).catch(() => {});
+          }
+          return r;
+        }
+        if (file.kind === 'ppd') {
+          const r = await driverCenter.installPpd(file.path, file.name);
+          if (r.ok) { driverCenter.addRecord({ kind: 'ppd', name: r.name, version: '', sha256: file.sha256, size: file.size, note: r.nickname, path: r.path, target: target || null }); if (target) r.assigned = await driverCenter.assignPpdToQueue(target, r.path); }
+          return r;
+        }
+        if (file.kind === 'dl') {
+          const r = driverCenter.installDl(file.path, file.name);
+          if (r.ok) driverCenter.addRecord({ kind: 'dl', name: r.name, version: '', sha256: file.sha256, size: file.size, note: 'HP LaserJet firmware (foo2zjs)', path: r.paths[0] });
+          return r;
+        }
+        if (file.kind === 'hplip-plugin') {
+          const r = await installPluginFile({ filePath: file.path, fileName: file.name, log });
+          if (r.ok) { driverCenter.addRecord({ kind: 'hplip-plugin', name: file.name, version: r.version, sha256: file.sha256, size: file.size, note: 'HPLIP proprietary plugin', path: null }); await probeScannerTelemetry(true).catch(() => {}); }
+          return r;
+        }
+        if (file.kind === 'nal') {
+          const r = await processFirmwareUpload({ filePath: file.path, fileName: file.name, workDir: fs.mkdtempSync(path.join(pickWorkBase().dir, 'scanfw-')), target: '', maxBytes: 64 * 1024 * 1024 });
+          if (r.ok) { for (const i of r.installed) driverCenter.addRecord({ kind: 'nal', name: i.filename, version: '', sha256: file.sha256, size: file.size, note: i.model || '', path: null }); await probeScannerTelemetry(true).catch(() => {}); }
+          return r;
+        }
+        return { ok: false, code: 'bad_kind' };
+      });
+      if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }
+      // The pending item is consumed once its job finishes; a multi-file archive stays until dropped.
+      if (item.kind === 'deb') setTimeout(() => { const j = driverCenter.getJob(); if (j && j.id === job.id && j.state !== 'running') driverCenter.dropPending(item.id); }, 20 * 60 * 1000).unref();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
+      return;
+    }
+
+    if (pathname === '/api/drivers/pending/drop' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: driverCenter.dropPending(String(body.id || '')) }));
+      return;
+    }
+
+    if (pathname === '/api/drivers/installed/remove' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const item = driverCenter.readRegistry().items.find(i => i.id === String(body.id || ''));
+      if (!item) { res.writeHead(404, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'not_found' })); }
+      const job = driverCenter.startJob(`remove-${item.kind}`, item.name, async (log) => {
+        let r = { ok: true };
+        if (item.kind === 'deb' && item.package) r = await driverCenter.removeDeb(item.package, { log });
+        else if ((item.kind === 'ppd' || item.kind === 'dl') && item.path) { try { fs.unlinkSync(item.path); } catch {} }
+        else if (item.kind === 'hplip-plugin' || item.kind === 'nal') { log('Only the record is removed; the installed files stay.'); }
+        if (r.ok) driverCenter.removeRecord(item.id);
+        return r;
+      });
+      if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
+      return;
+    }
+
+    if (pathname === '/api/drivers/apt/install' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) return denyAdmin(res);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const pkg = String(body.package || '');
+      if (!driverCenter.isAllowedPackage(pkg)) { res.writeHead(400, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'not_allowed' })); }
+      const job = driverCenter.startJob('apt-install', pkg, async (log) => {
+        const r = await driverCenter.aptInstall(pkg, { log });
+        if (r.ok) { runCmd('/usr/bin/python3', [printerManagerPath(), 'sync'], 120000).catch(() => {}); await probeScannerTelemetry(true).catch(() => {}); }
+        return r;
+      });
+      if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
+      return;
+    }
+
+    // --- DRIVER CENTER: HPLIP proprietary plugin ---
+    if (pathname === '/api/drivers/hplip' && req.method === 'GET') {
+      if (!isAdminOrLocal(req)) return denyAdmin(res);
+      const st = await getHplipPluginStatus();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({ success: true, ...st, busy: hplipPluginBusy }));
+      return;
+    }
+
+    // Raw body = the .run file (X-File-Name carries its name); ?kind=asc stores HP's detached
+    // signature next to a previously uploaded .run so hp-plugin can verify it.
+    if (pathname === '/api/drivers/hplip/plugin' && req.method === 'POST') {
+      const reply = (code, body) => {
+        if (res.headersSent) return;
+        res.writeHead(code, { 'Content-Type': 'application/json', ...(req.complete ? {} : { Connection: 'close' }) });
+        res.end(JSON.stringify(body));
+      };
+      if (!isAdminAuthenticated(req)) return reply(401, { success: false, code: 'unauthorized' });
+      if (hplipPluginBusy) return reply(409, { success: false, code: 'busy' });
+      const length = Number(req.headers['content-length']);
+      if (!Number.isFinite(length) || length <= 0) return reply(411, { success: false, code: 'length_required' });
+      const kind = url.searchParams.get('kind') === 'asc' ? 'asc' : 'run';
+      const maxBytes = kind === 'asc' ? 64 * 1024 : HPLIP_RUN_MAX_BYTES;
+      if (length > maxBytes) return reply(413, { success: false, code: 'too_large', max_upload_bytes: maxBytes });
+      let fileName = '';
+      try { fileName = path.basename(decodeURIComponent(String(req.headers['x-file-name'] || ''))).slice(0, 200); } catch {}
+      const base = pickWorkBase();
+      const keep = path.join(base.dir, 'drivers', 'hplip');
+      hplipPluginBusy = true;
+      try {
+        fs.mkdirSync(keep, { recursive: true, mode: 0o700 });
+        if (freeBytes(keep) < length + 64 * 1024 * 1024) return reply(507, { success: false, code: 'insufficient_space' });
+        if (kind === 'asc') {
+          const target = path.join(keep, 'pending.asc');
+          try { await receiveUpload(req, target, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+          return reply(200, { success: true, stored: 'asc' });
+        }
+        const upload = path.join(keep, 'upload.run');
+        try { await receiveUpload(req, upload, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+        const asc = path.join(keep, 'pending.asc');
+        const lines = [];
+        const result = await installPluginFile({ filePath: upload, fileName, ascPath: fs.existsSync(asc) ? asc : null, log: (l) => { lines.push(l); console.log(`[HPLIP plugin] ${l.split('\n')[0].slice(0, 200)}`); } });
+        if (result.ok) {
+          console.log(`[HPLIP plugin] Installed plugin ${result.version}`);
+          await probeScannerTelemetry(true).catch(() => {});
+        } else {
+          try { fs.unlinkSync(upload); } catch {}
+        }
+        const st = await getHplipPluginStatus();
+        return reply(result.ok ? 200 : 422, { success: result.ok, ...result, status: st });
+      } catch (err) {
+        console.error('[HPLIP plugin] Upload failed:', err.message);
+        return reply(500, { success: false, code: 'install_failed' });
+      } finally {
+        hplipPluginBusy = false;
+      }
+    }
+
     if (pathname === '/api/scanner/firmware' && req.method === 'GET') {
       if (!isAdminOrLocal(req)) return denyAdmin(res);
       const tools = getExtractionTools();

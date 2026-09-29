@@ -1,4 +1,4 @@
-import{g as os}from"./vendor-lucide-BXKtl8l6.js";/*! *****************************************************************************
+import{g as os}from"./vendor-lucide-B2DM_QmS.js";/*! *****************************************************************************
 Copyright (c) Microsoft Corporation.
 
 Permission to use, copy, modify, and/or distribute this software for any

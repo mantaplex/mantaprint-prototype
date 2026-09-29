@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   LayoutDashboard, Printer, ListChecks, ScanLine, Wifi, Settings as SettingsIcon, RefreshCw,
-  Home, LogOut, CircleUser
+  Home, LogOut, CircleUser, Boxes
 } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext.jsx';
 import AppHeader from '../shell/AppHeader.jsx';
@@ -18,12 +18,14 @@ import Scanner from './sections/Scanner.jsx';
 import Network from './sections/Network.jsx';
 import Settings from './sections/Settings.jsx';
 import Updates from './sections/Updates.jsx';
+import Drivers from './sections/Drivers.jsx';
 
 export const SECTIONS = [
   { id: 'overview', icon: LayoutDashboard },
   { id: 'printers', icon: Printer },
   { id: 'queue', icon: ListChecks },
   { id: 'scanner', icon: ScanLine },
+  { id: 'drivers', icon: Boxes },
   { id: 'network', icon: Wifi },
   { id: 'settings', icon: SettingsIcon },
   { id: 'updates', icon: RefreshCw }
@@ -140,6 +142,7 @@ export default function AdminApp({ data, adminUser, onLogout, onNavigateHome, re
           {section === 'network' && <Network {...props} />}
           {section === 'settings' && <Settings {...props} adminUser={adminUser} />}
           {section === 'updates' && <Updates {...props} />}
+          {section === 'drivers' && <Drivers {...props} />}
         </main>
       </div>
     </div>

@@ -272,12 +272,19 @@ async function extractOne(file, dest, tools, run, budget, timeoutMs) {
 // Look for .nal files inside an archive, descending into nested archives (installer
 // .exe -> .msi -> .cab ...) up to a few levels, within a time and size budget.
 export async function extractNalFiles(archivePath, workDir, opts = {}) {
+  const r = await extractMatchingFiles(archivePath, workDir, { ...opts, match: /\.nal$/i });
+  return { code: r.code === 'no_match' ? 'no_nal_found' : r.code, nal: r.files };
+}
+
+// Generic form: `match` picks the files to collect (Driver Center uses it for .ppd/.deb/.run/.dl).
+export async function extractMatchingFiles(archivePath, workDir, opts = {}) {
+  const match = opts.match || /\.nal$/i;
   const tools = opts.tools || getExtractionTools();
   const run = opts.runner || runTool;
   const deadline = Date.now() + (opts.timeoutMs || 180000);
   const maxDepth = opts.maxDepth ?? 3;
   let budget = opts.maxBytes ?? 2 * 1024 * 1024 * 1024;
-  if (!tools.sevenZip && !tools.cabextract && !tools.unshield) return { code: 'no_tools', nal: [] };
+  if (!tools.sevenZip && !tools.cabextract && !tools.unshield) return { code: 'no_tools', files: [] };
 
   const found = [];
   let queue = [{ file: archivePath, depth: 0 }];
@@ -291,12 +298,12 @@ export async function extractNalFiles(archivePath, workDir, opts = {}) {
       if (remaining <= 0 || n >= 60) break;
       const dest = path.join(workDir, `x${n++}`);
       const res = await extractOne(item.file, dest, tools, run, budget, Math.max(5000, remaining));
-      if (!res.ok) { lastError = res.code; if (res.code === 'too_large' && item.depth === 0) return { code: 'too_large', nal: [] }; continue; }
+      if (!res.ok) { lastError = res.code; if (res.code === 'too_large' && item.depth === 0) return { code: 'too_large', files: [] }; continue; }
       extractedAny = true;
       const files = walkFiles(dest);
       budget -= files.reduce((s, f) => s + f.size, 0);
-      if (budget < 0) return { code: 'too_large', nal: found };
-      for (const f of files) if (/\.nal$/i.test(f.name)) found.push(f);
+      if (budget < 0) return { code: 'too_large', files: found };
+      for (const f of files) if (match.test(f.name)) found.push(f);
       if (item.depth < maxDepth) {
         for (const f of files.filter(isNestedArchive).slice(0, 40)) next.push({ file: f.path, depth: item.depth + 1 });
       }
@@ -305,8 +312,8 @@ export async function extractNalFiles(archivePath, workDir, opts = {}) {
     if (found.length || Date.now() >= deadline) break;
     queue = next;
   }
-  if (found.length) return { code: 'ok', nal: found };
-  return { code: extractedAny ? 'no_nal_found' : lastError, nal: [] };
+  if (found.length) return { code: 'ok', files: found };
+  return { code: extractedAny ? 'no_match' : lastError, files: [] };
 }
 
 // ---- Matching found files to scanners ----------------------------------------------

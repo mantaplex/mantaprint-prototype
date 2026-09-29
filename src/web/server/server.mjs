@@ -782,6 +782,34 @@ let isProbingScanner = false;
 let scannerFirmwareBusy = false;
 let hplipPluginBusy = false;
 
+/**
+ * Installs an uploaded HPLIP plugin as a background Driver Center job (hp-plugin takes a
+ * couple of minutes on a Pi 3; the page polls the job and shows its log). The version check
+ * happens inside installPluginFile, so a wrong file fails the job with version_mismatch.
+ */
+function startHplipPluginJob({ filePath, fileName, ascPath, sha256 = null, size = 0, cleanup = () => {} }) {
+  if (hplipPluginBusy) return null;
+  const job = driverCenter.startJob('install-hplip-plugin', fileName, async (log) => {
+    hplipPluginBusy = true;
+    try {
+      const result = await installPluginFile({ filePath, fileName, ascPath: ascPath && fs.existsSync(ascPath) ? ascPath : null, log: (l) => { log(l); console.log(`[HPLIP plugin] ${String(l).split('\n')[0].slice(0, 200)}`); } });
+      if (result.ok) {
+        console.log(`[HPLIP plugin] Installed plugin ${result.version}`);
+        driverCenter.addRecord({ kind: 'hplip-plugin', name: fileName, version: result.version, sha256, size, note: 'HPLIP proprietary plugin', path: null });
+        await probeScannerTelemetry(true).catch(() => {});
+      } else {
+        try { fs.unlinkSync(filePath); } catch {}
+        if (result.tail) log(result.tail);
+      }
+      return result;
+    } finally {
+      hplipPluginBusy = false;
+      try { cleanup(); } catch {}
+    }
+  });
+  return job;
+}
+
 // epjitsu.conf names models tersely ("Fujitsu S1300"); prefer our profile's full name.
 function scannerModelName(usbId, fallback) {
   const prof = SCANNER_PROFILES.find(p => p.usb_id === usbId);
@@ -3807,17 +3835,9 @@ const server = http.createServer(async (req, res) => {
 
         if (kind === 'hplip-plugin' || kind === 'asc') {
           if (kind === 'asc') { fs.renameSync(filePath, path.join(keep, 'hplip', 'pending.asc')); fs.rmSync(work, { recursive: true, force: true }); return reply(200, { success: true, kind, stored: 'asc' }); }
-          hplipPluginBusy = true;
-          try {
-            const asc = path.join(keep, 'hplip', 'pending.asc');
-            const result = await installPluginFile({ filePath, fileName, ascPath: fs.existsSync(asc) ? asc : null, log: (l) => console.log(`[Drivers] ${l.split('\n')[0].slice(0, 200)}`) });
-            if (result.ok) {
-              driverCenter.addRecord({ kind, name: fileName, version: result.version, sha256, size: length, note: 'HPLIP proprietary plugin', path: null });
-              await probeScannerTelemetry(true).catch(() => {});
-            }
-            fs.rmSync(work, { recursive: true, force: true });
-            return reply(result.ok ? 200 : 422, { success: result.ok, kind, ...result });
-          } finally { hplipPluginBusy = false; }
+          const job = startHplipPluginJob({ filePath, fileName, ascPath: path.join(keep, 'hplip', 'pending.asc'), sha256, size: length, cleanup: () => fs.rmSync(work, { recursive: true, force: true }) });
+          if (!job) { fs.rmSync(work, { recursive: true, force: true }); return reply(409, { success: false, code: 'busy' }); }
+          return reply(200, { success: true, kind, job });
         }
 
         if (kind === 'ppd') {
@@ -4015,17 +4035,9 @@ const server = http.createServer(async (req, res) => {
         }
         const upload = path.join(keep, 'upload.run');
         try { await receiveUpload(req, upload, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
-        const asc = path.join(keep, 'pending.asc');
-        const lines = [];
-        const result = await installPluginFile({ filePath: upload, fileName, ascPath: fs.existsSync(asc) ? asc : null, log: (l) => { lines.push(l); console.log(`[HPLIP plugin] ${l.split('\n')[0].slice(0, 200)}`); } });
-        if (result.ok) {
-          console.log(`[HPLIP plugin] Installed plugin ${result.version}`);
-          await probeScannerTelemetry(true).catch(() => {});
-        } else {
-          try { fs.unlinkSync(upload); } catch {}
-        }
-        const st = await getHplipPluginStatus();
-        return reply(result.ok ? 200 : 422, { success: result.ok, ...result, status: st });
+        const job = startHplipPluginJob({ filePath: upload, fileName, ascPath: path.join(keep, 'pending.asc'), size: length });
+        if (!job) return reply(409, { success: false, code: 'busy' });
+        return reply(200, { success: true, job });
       } catch (err) {
         console.error('[HPLIP plugin] Upload failed:', err.message);
         return reply(500, { success: false, code: 'install_failed' });

@@ -548,6 +548,7 @@ export const admEn = {
       ascHint: 'HP\'s detached signature for the plugin file, downloaded from the same page.',
       ascStored: 'Signature stored. Now upload the plugin file.',
       installing: 'Installing plugin…',
+      jobStarted: 'Plugin upload received. hp-plugin is running; follow its log under Drivers & devices.',
       installed: 'HP plugin {v} installed. If the scanner doesn\'t appear within a few seconds, unplug the printer and plug it back in.',
       errors: {
         not_a_plugin: 'That isn\'t an HP plugin file. It must be named like hplip-3.22.10-plugin.run.',
@@ -1109,6 +1110,7 @@ export const admId = {
       ascHint: 'Tanda tangan terpisah dari HP untuk file plugin, diunduh dari halaman yang sama.',
       ascStored: 'Tanda tangan tersimpan. Sekarang unggah file plugin-nya.',
       installing: 'Memasang plugin…',
+      jobStarted: 'Plugin diterima. hp-plugin sedang berjalan; ikuti log-nya di Driver & perangkat.',
       installed: 'Plugin HP {v} terpasang. Jika scanner belum muncul dalam beberapa detik, cabut printer lalu colokkan lagi.',
       errors: {
         not_a_plugin: 'Itu bukan file plugin HP. Namanya harus seperti hplip-3.22.10-plugin.run.',

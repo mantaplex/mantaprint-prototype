@@ -120,6 +120,57 @@ function run(cmd, args, { timeoutMs = 30000, input = null, cwd } = {}) {
   });
 }
 
+/**
+ * Runs an interactive installer under a pseudo-terminal (util-linux `script`) and answers its
+ * yes/no prompts as they appear. hp-plugin and the plugin's own install script both read
+ * their prompts from the terminal; HPLIP's tui.enter_yes_no() loops forever on EOF, so feeding
+ * answers through a closed pipe (what a plain spawn does) leaves the license prompt spinning at
+ * 100% CPU. Output lines go to onLine as they arrive; the whole process group is killed on
+ * timeout so no child is left behind.
+ */
+/** All descendant pids of `pid` (deepest first), from /proc; `script` puts the command in its own session. */
+export function descendants(pid) {
+  const byParent = new Map();
+  for (const d of (() => { try { return fs.readdirSync('/proc'); } catch { return []; } })()) {
+    if (!/^\d+$/.test(d)) continue;
+    let stat = ''; try { stat = fs.readFileSync(`/proc/${d}/stat`, 'utf8'); } catch { continue; }
+    const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+    if (!byParent.has(ppid)) byParent.set(ppid, []);
+    byParent.get(ppid).push(Number(d));
+  }
+  const out = [];
+  const walk = (p) => { for (const c of byParent.get(p) || []) { walk(c); out.push(c); } };
+  walk(Number(pid));
+  return out;
+}
+
+export const PROMPT_RE = /(\(y=yes[^)]*\)\s*\?|\[y\/n(\/q)?\]\s*\??|\(y\/n\)\s*\??|press\s+<?enter>?[^\n]*)\s*$/i;
+export function runWithTty(cmd, args, { timeoutMs = 30000, onLine = () => {}, answer = 'y', cwd, maxAnswers = 20 } = {}) {
+  return new Promise((resolve) => {
+    let out = '', tail = '', done = false, answers = 0;
+    const shellCmd = [cmd, ...args].map((a) => `'${String(a).replace(/'/g, `'\\''`)}'`).join(' ');
+    const child = spawn('script', ['-qefc', shellCmd, '/dev/null'], { cwd, detached: true, env: { ...process.env, PATH: TOOL_PATH, LANG: 'C.UTF-8', TERM: 'dumb' }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const killAll = () => { for (const pid of descendants(child.pid)) { try { process.kill(pid, 'SIGKILL'); } catch {} } try { process.kill(-child.pid, 'SIGKILL'); } catch {} try { child.kill('SIGKILL'); } catch {} };
+    const timer = setTimeout(() => { if (!done) { onLine(`timeout after ${Math.round(timeoutMs / 1000)}s, killing installer`); killAll(); } }, timeoutMs);
+    const clean = (t) => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\r/g, '');
+    const onData = (d) => {
+      const text = clean(String(d));
+      out += text; if (out.length > 200000) out = out.slice(-200000);
+      tail += text;
+      const lines = tail.split('\n'); tail = lines.pop();
+      for (const l of lines) if (l.trim()) onLine(l);
+      if (PROMPT_RE.test(tail) && answers < maxAnswers) {
+        answers += 1; onLine(`${tail.trim()} ${answer}`); tail = '';
+        try { child.stdin.write(`${answer}\n`); } catch {}
+      }
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('error', (e) => { done = true; clearTimeout(timer); resolve({ code: 127, stdout: out, stderr: e.message, answers }); });
+    child.on('close', (code, signal) => { done = true; clearTimeout(timer); if (tail.trim()) onLine(tail); resolve({ code: code ?? (signal ? 137 : 1), stdout: out, stderr: '', answers }); });
+  });
+}
+
 /** Installed HPLIP version (dpkg), or null when the package is missing. */
 export async function installedHplipVersion() {
   const r = await run('dpkg-query', ['-W', '-f=${Version}', 'hplip'], { timeoutMs: 5000 });
@@ -216,9 +267,8 @@ export async function installPluginFile({ filePath, fileName, ascPath = null, st
   fs.chmodSync(canonical, 0o755);
 
   log(`hp-plugin -i -p ${canonical}`);
-  const r = await run('hp-plugin', ['-i', '-p', canonical], { timeoutMs: 10 * 60 * 1000, input: 'y\ny\ny\n', cwd: dir });
-  log(r.stdout.slice(-4000));
-  if (r.stderr.trim()) log(r.stderr.slice(-2000));
+  const r = await runWithTty('hp-plugin', ['-i', '-p', canonical], { timeoutMs: 10 * 60 * 1000, cwd: dir, onLine: log });
+  if (r.code !== 0) log(`hp-plugin exited with code ${r.code}`);
 
   const state = parseHplipState(readText(statePath));
   const ok = state.installed && state.version === version && pluginFilesPresent();

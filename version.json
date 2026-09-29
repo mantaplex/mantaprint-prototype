@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "semantic": {
     "major": 0,
     "minor": 3,
-    "patch": 7
+    "patch": 8
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.3.7"
+    "tag": "v0.3.8"
   },
   "build": {
-    "timestamp": "2026-09-29T14:00:00Z",
+    "timestamp": "2026-09-29T16:00:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,14 +22,14 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Fix: uploading the HPLIP plugin hung at 'Checking file' forever (hp-plugin's license prompt looped on a closed stdin); hp-plugin now runs under a pseudo-terminal as a background job with a live log.",
     "Drivers & devices is a checklist run in place: every connected device and catalog family gets its ordered steps (support packages, vendor .deb, HP plugin, ScanSnap .nal, HP LaserJet firmware, PPD fallback, verify) with done/todo/blocked state and the action on each open step; HP LaserJet 1000-P1505 firmware can be fetched from the page and is kept across OTA updates.",
-    "Drivers & devices: the technical apt package list is replaced by 'Supported printers & scanners' grouped by brand with Printer/Scanner badges, a filter and a search box; 'Install support' fetches the packages a family needs in one go. System packages live under a small 'Hub tools' list.",
-    "Fix: Drivers & devices jobs (apt install, .deb install, HP firmware upload) failed with 'Unexpected error' after the actual install succeeded, because the post-install printer re-sync called a misnamed helper."
+    "Drivers & devices: the technical apt package list is replaced by 'Supported printers & scanners' grouped by brand with Printer/Scanner badges, a filter and a search box; 'Install support' fetches the packages a family needs in one go. System packages live under a small 'Hub tools' list."
   ],
   "components": {
-    "core": "0.3.7",
-    "web": "0.3.7",
-    "frontend": "0.3.7",
+    "core": "0.3.8",
+    "web": "0.3.8",
+    "frontend": "0.3.8",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

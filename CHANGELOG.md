@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.8] - 2026-09-29
+
+### Fixed
+- **Uploading the HPLIP plugin hung at "Checking file…" forever.** `hp-plugin -i -p` was run with its answers piped into stdin. hp-plugin reads that pipe into its own buffer, so the plugin's install script (started by hp-plugin, sharing the same stdin) found it at EOF at the license prompt, and HPLIP's `tui.enter_yes_no()` retries on EOF without end: the installer spun at 100% CPU until the 10-minute kill, which only killed hp-plugin and left the script running. The hub now runs hp-plugin under a pseudo-terminal (`script`), answers each yes/no prompt as it appears, kills the whole process tree on timeout, and runs the install as a background job whose log the Drivers & devices page shows live (`install-hplip-plugin`). Found on the first upload of `hplip-3.22.10-plugin.run` to a Pi 3.
+- The `.asc` signature upload from the plugin step used the wrong kind and was treated as a `.run`.
+
+---
+
 ## [0.3.7] - 2026-09-29
 
 ### Changed

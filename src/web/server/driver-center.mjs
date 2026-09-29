@@ -455,15 +455,16 @@ export async function aptStatus() {
 }
 
 export async function aptInstall(pkg, { log = () => {} } = {}) {
-  if (!isAllowedPackage(pkg)) return { ok: false, code: 'not_allowed' };
+  const pkgs = Array.isArray(pkg) ? pkg : [pkg];
+  if (!pkgs.length || !pkgs.every(isAllowedPackage)) return { ok: false, code: 'not_allowed' };
   if (Date.now() - lastAptUpdate > 60 * 60 * 1000) {
     log('apt-get update');
     const u = await run('apt-get', ['update'], { timeoutMs: 5 * 60 * 1000, onLine: log });
     if (u.code !== 0) return { ok: false, code: 'offline', tail: u.stderr.slice(-400) };
     lastAptUpdate = Date.now();
   }
-  log(`apt-get install -y --no-install-recommends ${pkg}`);
-  const r = await run('apt-get', ['install', '-y', '--no-install-recommends', pkg], { timeoutMs: 20 * 60 * 1000, onLine: log });
+  log(`apt-get install -y --no-install-recommends ${pkgs.join(' ')}`);
+  const r = await run('apt-get', ['install', '-y', '--no-install-recommends', ...pkgs], { timeoutMs: 20 * 60 * 1000, onLine: log });
   return { ok: r.code === 0, exit_code: r.code, tail: (r.stdout + r.stderr).trim().slice(-600) };
 }
 

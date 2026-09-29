@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.6] - 2026-09-29
+
+### Changed
+- **Drivers & devices: "Supported printers & scanners" replaces the package list.** The catalog is now grouped by brand, every family carries *Printer* / *Scanner* badges (both for MFPs), and there is a filter (All / Printers / Scanners) and a search box that matches brand, family and model names (`models` in `driver-recipes.json`). **Install support** installs the Debian packages a family needs in one `apt-get` run (`apt` in the recipes; `POST /api/drivers/apt/install` accepts `packages[]`). System packages that are not tied to a device (nftables, archive tools, ipp-usb, sane-airscan, …) sit under a small *Hub tools* list with plain-language names.
+
+---
+
 ## [0.3.5] - 2026-09-29
 
 ### Fixed

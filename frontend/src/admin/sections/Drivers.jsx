@@ -257,6 +257,95 @@ function PendingList({ pending, onChanged, showToast, t }) {
   );
 }
 
+const TOOL_PACKAGES = ['nftables', 'p7zip-full', 'cabextract', 'unshield', 'ipp-usb', 'sane-airscan', 'sane-utils', 'cups-filters', 'printer-driver-all'];
+
+function KindBadges({ r, t }) {
+  const printer = r.kind === 'printer' || r.kind === 'mfp';
+  const scanner = r.kind === 'scanner' || r.kind === 'mfp';
+  return (
+    <span className="inline-flex items-center gap-1">
+      {printer && <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[10px] font-bold"><Printer className="w-3 h-3" />{t('adm.drivers.supported.printer')}</span>}
+      {scanner && <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded-md bg-violet-500/15 border border-violet-500/30 text-violet-300 text-[10px] font-bold"><ScanLine className="w-3 h-3" />{t('adm.drivers.supported.scanner')}</span>}
+    </span>
+  );
+}
+
+/** Supported printers & scanners: the catalog grouped by brand, filterable and searchable, with a
+ *  one-click "Install support" that pulls the Debian packages a family needs. */
+function SupportedList({ catalog, apt, busy, onInstall, t }) {
+  const [q, setQ] = useState('');
+  const [kind, setKind] = useState('all'); // all | printer | scanner
+  const installed = new Set(apt.filter((p) => p.installed).map((p) => p.name));
+  const qn = q.trim().toLowerCase();
+  const rows = catalog.filter((r) => {
+    if (kind === 'printer' && !(r.kind === 'printer' || r.kind === 'mfp')) return false;
+    if (kind === 'scanner' && !(r.kind === 'scanner' || r.kind === 'mfp')) return false;
+    if (!qn) return true;
+    return [r.vendor, r.family, ...(r.models || [])].join(' ').toLowerCase().includes(qn);
+  });
+  const groups = [];
+  for (const r of rows) {
+    let g = groups.find((x) => x.vendor === r.vendor);
+    if (!g) { g = { vendor: r.vendor, items: [] }; groups.push(g); }
+    g.items.push(r);
+  }
+  groups.sort((a, b) => a.vendor.localeCompare(b.vendor));
+  const counts = { all: catalog.length, printer: catalog.filter((r) => r.kind !== 'scanner').length, scanner: catalog.filter((r) => r.kind !== 'printer').length };
+  return (
+    <div>
+      <SectionLabel>{t('adm.drivers.supported.title')}</SectionLabel>
+      <p className="text-xs text-slate-500 mb-3">{t('adm.drivers.supported.desc')}</p>
+      <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('adm.drivers.supported.search')} className="flex-1" />
+        <div className="flex items-center gap-1">
+          {['all', 'printer', 'scanner'].map((k) => (
+            <button key={k} type="button" onClick={() => setKind(k)} className={`h-9 px-3 rounded-xl text-xs font-semibold whitespace-nowrap ${kind === k ? 'bg-manta-600 text-white' : 'bg-white/[0.04] border border-white/10 text-slate-300 hover:bg-white/10'}`}>
+              {t(`adm.drivers.supported.filter.${k}`)} <span className="opacity-60">{counts[k]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {groups.length === 0 ? (
+        <EmptyState icon={Search} title={t('adm.drivers.supported.noMatch')} description={t('adm.drivers.supported.noMatchDesc')} />
+      ) : groups.map((g) => (
+        <div key={g.vendor} className="mb-4">
+          <div className="text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5 px-1">{g.vendor}</div>
+          <List>
+            {g.items.map((r) => {
+              const pkgs = r.apt || [];
+              const missing = pkgs.filter((p) => !installed.has(p));
+              const supportReady = pkgs.length > 0 && missing.length === 0;
+              return (
+                <div key={r.id} className="px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-100">{r.family}</span>
+                        <KindBadges r={r} t={t} />
+                      </div>
+                      {r.models?.length > 0 && <div className="mt-1 text-xs text-slate-400">{r.models.join(' · ')}</div>}
+                      {(r.requires || []).map((x, i) => <div key={i} className="mt-1 text-xs text-amber-200/80">{t(`adm.drivers.need.${x.kind}`, { file: x.package || '' })}{x.download && <> · <a className="text-manta-300 underline" href={x.download} target="_blank" rel="noreferrer">{t('adm.drivers.downloadFromVendor')}</a></>}</div>)}
+                      {r.note && <div className="mt-1 text-[11px] text-slate-500">{r.note}</div>}
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <StatusPill tone={STATUS_TONE[r.status]}>{t(`adm.drivers.status.${r.status}`)}</StatusPill>
+                      {r.status !== 'unsupported' && pkgs.length > 0 && (
+                        supportReady
+                          ? <span className="inline-flex items-center gap-1 text-[11px] text-manta-300"><Check className="w-3 h-3" />{t('adm.drivers.supported.ready')}</span>
+                          : <Button size="sm" variant="secondary" icon={busy ? Loader2 : DownloadCloud} disabled={busy} onClick={() => onInstall(missing)} title={missing.join(', ')}>{t('adm.drivers.supported.install')}</Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </List>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function JobCard({ job, t }) {
   if (!job) return null;
   const running = job.state === 'running';
@@ -275,7 +364,6 @@ export default function Drivers({ showToast }) {
   const [ov, setOv] = useState(null);
   const [target, setTarget] = useState(null);
   const [aptBusy, setAptBusy] = useState(null);
-  const [showCatalog, setShowCatalog] = useState(false);
   const uploadRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -289,9 +377,10 @@ export default function Drivers({ showToast }) {
     return () => clearInterval(id);
   }, [load, ov?.job?.state]);
 
-  const aptInstall = async (pkg) => {
-    setAptBusy(pkg);
-    try { const r = await adminFetch('/api/drivers/apt/install', { method: 'POST', body: { package: pkg } }); if (r.success) showToast?.(t('adm.drivers.jobStarted', { name: pkg }), 'success'); }
+  const aptInstall = async (pkgs) => {
+    const list = Array.isArray(pkgs) ? pkgs : [pkgs];
+    setAptBusy(list.join(','));
+    try { const r = await adminFetch('/api/drivers/apt/install', { method: 'POST', body: { packages: list } }); if (r.success) showToast?.(t('adm.drivers.jobStarted', { name: list.join(', ') }), 'success'); }
     catch (e) { showToast?.(e.message, 'error'); }
     finally { setAptBusy(null); load(); }
   };
@@ -353,37 +442,20 @@ export default function Drivers({ showToast }) {
       </div>
 
       <div className="mt-6">
-        <SectionLabel>{t('adm.drivers.apt.title')}</SectionLabel>
-        <p className="text-xs text-slate-500 mb-2 flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" />{t('adm.drivers.apt.desc')}</p>
-        <List>
-          {(ov?.apt?.packages || []).map((p) => (
-            <SettingRow key={p.name} title={<span className="font-mono">{p.name}</span>} description={p.for}>
-              {p.installed ? <StatusPill tone="ok">{t('adm.drivers.apt.installed')}</StatusPill>
-                : <Button size="sm" variant="secondary" icon={aptBusy === p.name ? Loader2 : DownloadCloud} disabled={Boolean(aptBusy) || ov?.job?.state === 'running'} onClick={() => aptInstall(p.name)}>{t('adm.drivers.apt.install')}</Button>}
-            </SettingRow>
-          ))}
-        </List>
+        <SupportedList catalog={ov?.catalog || []} apt={ov?.apt?.packages || []} busy={Boolean(aptBusy) || ov?.job?.state === 'running'} onInstall={(pkgs) => aptInstall(pkgs)} t={t} />
       </div>
 
       <div className="mt-6">
-        <SectionLabel right={<Button size="sm" variant="ghost" icon={showCatalog ? X : Boxes} onClick={() => setShowCatalog((v) => !v)}>{showCatalog ? t('adm.drivers.catalog.hide') : t('adm.drivers.catalog.show')}</Button>}>{t('adm.drivers.catalog.title')}</SectionLabel>
-        <p className="text-xs text-slate-500 mb-2">{t('adm.drivers.catalog.desc')}</p>
-        {showCatalog && (
-          <List>
-            {(ov?.catalog || []).map((r) => (
-              <div key={r.id} className="flex items-start gap-3 px-4 py-3">
-                <span className="h-9 w-9 shrink-0 rounded-xl bg-white/[0.04] border border-white/10 text-slate-400 flex items-center justify-center">{r.kind === 'scanner' ? <ScanLine className="w-4 h-4" /> : <Printer className="w-4 h-4" />}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-slate-100">{r.vendor} · {r.family}</div>
-                  <div className="text-xs text-slate-500">{[r.print?.note || r.print?.package || (r.print?.how && t(`adm.drivers.how.${r.print.how}`)), r.scan?.backend && `${t('adm.drivers.catalog.scan')}: ${r.scan.backend}`].filter(Boolean).join(' · ')}</div>
-                  {(r.requires || []).map((x, i) => <div key={i} className="text-xs text-amber-200/80 mt-0.5">{t(`adm.drivers.need.${x.kind}`, { file: x.package || '' })}{x.download && <> · <a className="text-manta-300 underline" href={x.download} target="_blank" rel="noreferrer">{t('adm.drivers.downloadFromVendor')}</a></>}</div>)}
-                  {r.note && <div className="text-xs text-slate-500 mt-0.5">{r.note}</div>}
-                </div>
-                <StatusPill tone={STATUS_TONE[r.status]}>{t(`adm.drivers.status.${r.status}`)}</StatusPill>
-              </div>
-            ))}
-          </List>
-        )}
+        <SectionLabel>{t('adm.drivers.tools.title')}</SectionLabel>
+        <p className="text-xs text-slate-500 mb-2 flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" />{t('adm.drivers.tools.desc')}</p>
+        <List>
+          {(ov?.apt?.packages || []).filter((p) => TOOL_PACKAGES.includes(p.name)).map((p) => (
+            <SettingRow key={p.name} title={t(`adm.drivers.tools.names.${p.name}`)} description={<span className="font-mono text-[11px]">{p.name}</span>}>
+              {p.installed ? <StatusPill tone="ok">{t('adm.drivers.apt.installed')}</StatusPill>
+                : <Button size="sm" variant="secondary" icon={aptBusy ? Loader2 : DownloadCloud} disabled={Boolean(aptBusy) || ov?.job?.state === 'running'} onClick={() => aptInstall([p.name])}>{t('adm.drivers.apt.install')}</Button>}
+            </SettingRow>
+          ))}
+        </List>
       </div>
     </div>
   );

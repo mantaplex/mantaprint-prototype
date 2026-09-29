@@ -276,6 +276,20 @@ export const admEn = {
       state: { running: 'Running', done: 'Done', failed: 'Failed' }
     },
     installed: { title: 'Installed by you', none: 'Nothing installed yet', noneDesc: 'Files you upload and packages you install from this page are listed here and survive hub updates.', remove: 'Remove', removeConfirm: 'Remove {name} from this hub?' },
+    supported: {
+      title: 'Supported printers & scanners',
+      desc: 'Grouped by brand. "Verified" was tested on real hub hardware; "driver available" is a package claim. "Install support" fetches the Debian packages a family needs (internet required); families marked "needs a vendor file" also need your upload above.',
+      search: 'Search brand or model (e.g. L3110, LiDE 300, M130a)',
+      filter: { all: 'All', printer: 'Printers', scanner: 'Scanners' },
+      printer: 'Printer', scanner: 'Scanner',
+      ready: 'Support installed', install: 'Install support',
+      noMatch: 'No match', noMatchDesc: 'Try a shorter name, or use "Check a model" above: it also searches the drivers installed on this hub.'
+    },
+    tools: {
+      title: 'Hub tools',
+      desc: 'Optional system packages the hub uses (internet required).',
+      names: { nftables: 'Firewall for Lockdown mode', 'p7zip-full': 'Unpack vendor installers (.exe / .zip / .7z)', cabextract: 'Unpack Windows .cab installers', unshield: 'Unpack InstallShield installers', 'ipp-usb': 'Driverless IPP-over-USB printers and scanners', 'sane-airscan': 'Driverless eSCL / WSD scanners', 'sane-utils': 'Scanner tools (scanimage)', 'cups-filters': 'CUPS filter chain', 'printer-driver-all': 'Every free printer driver Debian ships' }
+    },
     apt: { title: 'Packages from the Debian repositories', desc: 'Needs internet access on the hub. Only this fixed list can be installed.', installed: 'Installed', install: 'Install' },
     catalog: { title: 'Catalog', desc: 'Device families this hub knows about. "Verified" means tested on real hub hardware; "driver available" is a package claim, not a test.', show: 'Show catalog', hide: 'Hide', scan: 'Scan' },
     errors: {
@@ -836,6 +850,20 @@ export const admId = {
       state: { running: 'Berjalan', done: 'Selesai', failed: 'Gagal' }
     },
     installed: { title: 'Dipasang oleh Anda', none: 'Belum ada yang dipasang', noneDesc: 'File yang Anda unggah dan paket yang Anda pasang dari halaman ini tercatat di sini dan tetap ada setelah hub diperbarui.', remove: 'Hapus', removeConfirm: 'Hapus {name} dari hub ini?' },
+    supported: {
+      title: 'Printer & scanner yang didukung',
+      desc: 'Dikelompokkan per merek. "Terverifikasi" berarti sudah dites di hardware hub sungguhan; "driver tersedia" hanya klaim paket. "Pasang dukungan" mengunduh paket Debian yang dibutuhkan keluarga itu (butuh internet); yang bertanda "butuh file vendor" juga perlu unggahan Anda di atas.',
+      search: 'Cari merek atau model (misal L3110, LiDE 300, M130a)',
+      filter: { all: 'Semua', printer: 'Printer', scanner: 'Scanner' },
+      printer: 'Printer', scanner: 'Scanner',
+      ready: 'Dukungan terpasang', install: 'Pasang dukungan',
+      noMatch: 'Tidak ada yang cocok', noMatchDesc: 'Coba nama yang lebih pendek, atau pakai "Cek dukungan model" di atas: itu juga mencari driver yang terpasang di hub ini.'
+    },
+    tools: {
+      title: 'Alat hub',
+      desc: 'Paket sistem opsional yang dipakai hub (butuh internet).',
+      names: { nftables: 'Firewall untuk mode Lockdown', 'p7zip-full': 'Membongkar installer vendor (.exe / .zip / .7z)', cabextract: 'Membongkar installer .cab Windows', unshield: 'Membongkar installer InstallShield', 'ipp-usb': 'Printer & scanner IPP-over-USB tanpa driver', 'sane-airscan': 'Scanner eSCL / WSD tanpa driver', 'sane-utils': 'Alat scanner (scanimage)', 'cups-filters': 'Rantai filter CUPS', 'printer-driver-all': 'Semua driver printer bebas dari Debian' }
+    },
     apt: { title: 'Paket dari repositori Debian', desc: 'Butuh akses internet di hub. Hanya daftar tetap ini yang bisa dipasang.', installed: 'Terpasang', install: 'Pasang' },
     catalog: { title: 'Katalog', desc: 'Keluarga perangkat yang dikenal hub ini. "Terverifikasi" berarti sudah dites di hardware hub sungguhan; "driver tersedia" hanya klaim paket, bukan hasil tes.', show: 'Tampilkan katalog', hide: 'Sembunyikan', scan: 'Scan' },
     errors: {

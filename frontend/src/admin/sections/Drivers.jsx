@@ -85,7 +85,7 @@ function UploadAction({ action, step, ctx, api, t }) {
   const [error, setError] = useState('');
   const targets = step.kind === 'nal' ? step.targets || [] : [];
   const [target, setTarget] = useState(action.target || (targets.length === 1 ? targets[0].filename : ''));
-  const label = t(`adm.drivers.step.upload.${action.expect}`);
+  const label = action.label || t(`adm.drivers.step.upload.${action.expect}`);
 
   const pick = async (e) => {
     const file = e.target.files?.[0];
@@ -130,8 +130,32 @@ function UploadAction({ action, step, ctx, api, t }) {
   );
 }
 
+/** One row per required file: name, note, status, its own upload button, a check mark once it is on the hub. */
+function FileList({ step, ctx, api, t }) {
+  const files = step.files || [];
+  if (!files.length) return null;
+  return (
+    <ul className="mt-2 space-y-1.5">
+      {files.map((f) => (
+        <li key={f.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 ${f.done ? 'border-manta-500/25 bg-manta-500/[0.06]' : 'border-white/[0.08] bg-white/[0.02]'}`}>
+          <span className={`h-5 w-5 shrink-0 rounded-full flex items-center justify-center border ${f.done ? 'bg-manta-500/20 border-manta-500/50 text-manta-300' : 'border-white/15 text-slate-500'}`}>{f.done ? <Check className="w-3 h-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-mono text-slate-100 truncate">{f.name}{f.optional && <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-wide text-slate-500">{t('adm.drivers.step.optional')}</span>}</div>
+            <div className={`text-[11px] ${f.done ? 'text-manta-300' : 'text-slate-500'}`}>
+              {f.done ? t('adm.drivers.step.files.uploaded') : t('adm.drivers.step.files.missing')}
+              {step.kind === 'plugin' && ` · ${t(`adm.drivers.step.plugin.file.${f.id}`)}`}
+              {f.note && step.kind !== 'plugin' && ` · ${f.note}`}
+            </div>
+          </div>
+          {!f.done && step.status !== 'blocked' && <UploadAction action={{ type: 'upload', accept: f.accept, endpoint: f.endpoint, expect: f.expect, target: f.target || null, label: t('adm.drivers.step.files.upload') }} step={step} ctx={ctx} api={api} t={t} />}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function StepActions({ step, ctx, api, t }) {
-  const actions = step.actions || [];
+  const actions = (step.actions || []).filter((a) => !(a.type === 'upload' && step.files?.length));
   if (!actions.length) return null;
   return (
     <div className="mt-2 flex flex-wrap items-start gap-2">
@@ -166,6 +190,7 @@ function Steps({ steps, ctx, api, t }) {
             <div className="min-w-0 flex-1">
               <div className={`text-sm font-semibold ${muted ? 'text-slate-400' : 'text-slate-100'}`}>{title}{step.status === 'optional' && <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{t('adm.drivers.step.optional')}</span>}</div>
               {detail && <p className={`text-xs mt-0.5 ${step.status === 'blocked' ? 'text-slate-500' : 'text-slate-400'}`}>{detail}</p>}
+              {step.status !== 'done' && <FileList step={step} ctx={ctx} api={api} t={t} />}
               {step.status !== 'done' && step.status !== 'blocked' && <StepActions step={step} ctx={ctx} api={api} t={t} />}
             </div>
           </li>

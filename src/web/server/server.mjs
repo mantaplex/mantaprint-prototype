@@ -795,7 +795,7 @@ function startHplipPluginJob({ filePath, fileName, ascPath, sha256 = null, size 
       const result = await installPluginFile({ filePath, fileName, ascPath: ascPath && fs.existsSync(ascPath) ? ascPath : null, log: (l) => { log(l); console.log(`[HPLIP plugin] ${String(l).split('\n')[0].slice(0, 200)}`); } });
       if (result.ok) {
         console.log(`[HPLIP plugin] Installed plugin ${result.version}`);
-        driverCenter.addRecord({ kind: 'hplip-plugin', name: fileName, version: result.version, sha256, size, note: 'HPLIP proprietary plugin', path: null });
+        driverCenter.addRecord({ kind: 'hplip-plugin', name: fileName, version: result.version, sha256, size, note: 'HPLIP proprietary plugin', path: null, signature_verified: Boolean(result.signature_verified) });
         await probeScannerTelemetry(true).catch(() => {});
       } else {
         try { fs.unlinkSync(filePath); } catch {}
@@ -3761,6 +3761,9 @@ const server = http.createServer(async (req, res) => {
       // vendor .deb names), plus anything installed through this page.
       const installed = await driverCenter.installedPackages(driverCenter.allPackageNames(recipes));
       for (const i of driverCenter.readRegistry().items) if (i.kind === 'deb' && i.package) installed.add(i.package);
+      const registry = driverCenter.readRegistry().items;
+      hp.asc_pending = fs.existsSync(path.join(pickWorkBase().dir, 'drivers', 'hplip', 'pending.asc'));
+      hp.signature_verified = registry.some(i => i.kind === 'hplip-plugin' && i.signature_verified && i.version === hp.plugin_version);
       const facts = { installed, hplip: hp, nal: firmware, hpfw: driverCenter.presentHpFirmware() };
       const devices = driverCenter.deviceNeeds({ printers: status.printers || [], scanner: status.scanner, hp, firmware, usb: getConnectedUsbPrinters(), recipes, installed })
         .map(d => ({ ...d, ...driverCenter.deviceSteps(d, recipes.find(r => r.id === d.recipe?.id) || null, facts) }));

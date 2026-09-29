@@ -50,6 +50,10 @@ steps, `unsupported`).
 | `verify` | – (blocked until the steps above are done and the device is connected) | **Print test page**, **Open the scanner** |
 | `unsupported` | – | the reason from the catalog |
 
+A step that needs several files (`plugin`, `nal`, `dl`) also carries `files[]`: one row per file
+(`name`, `done`, `optional`, `accept`, `expect`, `endpoint`, `target`), rendered with its own upload
+button and a check mark once the file is on the hub.
+
 Step statuses: `done`, `todo`, `blocked` (`blocked_by` names the step), `optional`, `info`. A
 `ready` verdict from `printer_manager.py` wins over a `setup` summary, so a working queue never
 shows as unfinished because a catalog package is missing.

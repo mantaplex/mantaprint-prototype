@@ -572,6 +572,21 @@ function summarize(recipeStatus, steps) {
   return { state: todo ? 'setup' : 'ready', todo };
 }
 
+/** Per-file rows for a step that needs several files, each with its own upload button in the UI. */
+export function nalFiles(targets) {
+  return (targets || []).map((x) => ({ id: x.filename, name: x.filename, note: x.model, done: Boolean(x.installed), connected: Boolean(x.connected), accept: '.nal,.zip,.exe,.cab,.msi,.7z,.dmg,.pkg', expect: 'nal', endpoint: '/api/scanner/firmware', target: x.filename }));
+}
+export function dlFiles(models) {
+  return (models || []).map((m) => ({ id: m.key, name: m.filename, note: m.models.join(', '), done: Boolean(m.present), accept: '.dl', expect: 'dl', endpoint: '/api/drivers/upload' }));
+}
+export function pluginFiles(hplip, done) {
+  const run = hplip.required_file || 'hplip-<version>-plugin.run';
+  return [
+    { id: 'asc', name: `${run}.asc`, optional: true, done: Boolean(hplip.asc_pending || (done && hplip.signature_verified)), accept: '.asc', expect: 'hplip-plugin', endpoint: '/api/drivers/upload' },
+    { id: 'run', name: run, done, accept: '.run', expect: 'hplip-plugin', endpoint: '/api/drivers/upload' }
+  ];
+}
+
 function hpFirmwareModels(recipe, hpfw) {
   const out = [];
   for (const m of recipe.models || []) {
@@ -615,17 +630,17 @@ export function familySteps(recipe, facts = {}) {
     } else if (req.kind === 'hplip-plugin') {
       const done = Boolean(hplip.plugin_installed && hplip.plugin_matches !== false);
       const blocked = !hplip.hplip_installed;
-      steps.push({ id: 'plugin', kind: 'plugin', status: done ? 'done' : blocked ? 'blocked' : 'todo', blocked_by: blocked ? 'packages' : null, required_file: hplip.required_file || 'hplip-<version>-plugin.run', hplip_version: hplip.hplip_version || null, plugin_version: hplip.plugin_version || null, download: req.download || hplip.download_url || null, actions: done || blocked ? [] : [{ type: 'upload', accept: '.run,.asc', endpoint: '/api/drivers/upload', expect: 'hplip-plugin' }, ...(req.download ? [{ type: 'link', href: req.download }] : [])] });
+      steps.push({ id: 'plugin', kind: 'plugin', status: done ? 'done' : blocked ? 'blocked' : 'todo', blocked_by: blocked ? 'packages' : null, required_file: hplip.required_file || 'hplip-<version>-plugin.run', hplip_version: hplip.hplip_version || null, plugin_version: hplip.plugin_version || null, download: req.download || hplip.download_url || null, files: pluginFiles(hplip, done), actions: done || blocked ? [] : [{ type: 'upload', accept: '.run,.asc', endpoint: '/api/drivers/upload', expect: 'hplip-plugin' }, ...(req.download ? [{ type: 'link', href: req.download }] : [])] });
     } else if (req.kind === 'nal') {
       const targets = nalDevices.map((d) => ({ model: d.model, filename: d.filename, usb_id: d.usb_id, installed: Boolean(d.installed), connected: Boolean(d.connected) }));
       const connectedMissing = targets.filter((x) => x.connected && !x.installed);
       const installedCount = targets.filter((x) => x.installed).length;
       const status = connectedMissing.length ? 'todo' : installedCount ? 'done' : 'todo';
-      steps.push({ id: 'nal', kind: 'nal', status, targets, actions: status === 'done' ? [] : [{ type: 'upload', accept: '.nal,.zip,.exe,.cab,.msi,.7z,.dmg,.pkg', endpoint: '/api/scanner/firmware', expect: 'nal', target: connectedMissing[0]?.filename || null }] });
+      steps.push({ id: 'nal', kind: 'nal', status, targets, files: nalFiles(targets), actions: status === 'done' ? [] : [{ type: 'upload', accept: '.nal,.zip,.exe,.cab,.msi,.7z,.dmg,.pkg', endpoint: '/api/scanner/firmware', expect: 'nal', target: connectedMissing[0]?.filename || null }] });
     } else if (req.kind === 'dl') {
       const models = hpFirmwareModels(recipe, hpfw);
       const missing = models.filter((m) => !m.present);
-      steps.push({ id: 'dl', kind: 'dl', status: missing.length ? 'todo' : 'done', models, actions: missing.length ? [{ type: 'getweb', models: missing.map((m) => m.key) }, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl' }] : [] });
+      steps.push({ id: 'dl', kind: 'dl', status: missing.length ? 'todo' : 'done', models, files: dlFiles(models), actions: missing.length ? [{ type: 'getweb', models: missing.map((m) => m.key) }, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl' }] : [] });
     }
   }
 
@@ -649,6 +664,7 @@ export function deviceSteps(device, recipe, facts = {}) {
     const nal = steps.find((s) => s.kind === 'nal');
     if (nal && device.usb_id) {
       nal.targets = nal.targets.filter((x) => x.usb_id === device.usb_id);
+      nal.files = nalFiles(nal.targets);
       const mine = nal.targets[0];
       if (mine) { nal.status = mine.installed ? 'done' : 'todo'; nal.actions = mine.installed ? [] : [{ type: 'upload', accept: '.nal,.zip,.exe,.cab,.msi,.7z,.dmg,.pkg', endpoint: '/api/scanner/firmware', expect: 'nal', target: mine.filename }]; }
     }
@@ -665,6 +681,7 @@ export function deviceSteps(device, recipe, facts = {}) {
       const mine = dl.models.filter((m) => m.models.some((name) => new RegExp(`(^|[^0-9a-z])${name.replace(/^laserjet\s+/i, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^0-9a-z]|$)`, 'i').test(hay)));
       if (mine.length) {
         dl.models = mine;
+        dl.files = dlFiles(mine);
         dl.status = mine.every((m) => m.present) ? 'done' : 'todo';
         dl.actions = dl.status === 'done' ? [] : [{ type: 'getweb', models: mine.filter((m) => !m.present).map((m) => m.key) }, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl' }];
       }
@@ -672,7 +689,7 @@ export function deviceSteps(device, recipe, facts = {}) {
     if (device.readiness === 'needs_firmware') {
       const provision = { type: 'provision', queue: q };
       if (dl) { dl.status = 'todo'; dl.actions = [provision, ...dl.actions.filter((a) => a.type !== 'provision')]; }
-      else steps.push({ id: 'dl', kind: 'dl', status: 'todo', models: [], actions: [provision, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl', queue: q }] });
+      else steps.push({ id: 'dl', kind: 'dl', status: 'todo', models: [], files: [], actions: [provision, { type: 'upload', accept: '.dl', endpoint: '/api/drivers/upload', expect: 'dl', queue: q }] });
     } else if (device.readiness === 'provisioning') {
       steps.push({ id: 'provisioning', kind: 'provisioning', status: 'info', actions: [] });
     }

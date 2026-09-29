@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.10] - 2026-09-29
+
+### Changed
+- **Steps that need several files show one row per file.** The HP plugin step lists `hplip-<v>-plugin.run.asc` (optional) and `hplip-<v>-plugin.run`, the HP LaserJet firmware step one row per `sihpXXXX.dl`, and the ScanSnap step one row per scanner's `.nal`. Each row has its own upload button and turns into a check mark with "On the hub" once the file is there (`files[]` on the step in `GET /api/drivers/overview`; the signature counts as present while it waits for the `.run`, or once the installed plugin was verified with it).
+
+---
+
 ## [0.3.9] - 2026-09-29
 
 ### Fixed

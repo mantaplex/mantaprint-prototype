@@ -512,6 +512,7 @@ export const admEn = {
   scanner: {
     title: 'Scanner',
     desc: 'The USB scanner, who may use it, and devices paired with the scanner app.',
+    multi: { active: 'Default scanner', available: 'Available', select: 'Use as default', desc: 'Scan Studio can pick any of them per scan; this one is used when nothing is chosen.' },
     none: 'No scanner detected',
     noneDesc: 'Connect a USB scanner or multifunction printer to the hub.',
     ready: 'Ready',
@@ -1079,6 +1080,7 @@ export const admId = {
   scanner: {
     title: 'Scanner',
     desc: 'Scanner USB, siapa yang boleh memakainya, dan perangkat yang dipasangkan dengan aplikasi scanner.',
+    multi: { active: 'Scanner utama', available: 'Tersedia', select: 'Jadikan utama', desc: 'Scan Studio bisa memilih salah satunya tiap kali memindai; yang ini dipakai kalau tidak dipilih.' },
     none: 'Scanner tidak terdeteksi',
     noneDesc: 'Sambungkan scanner USB atau printer multifungsi ke hub.',
     ready: 'Siap',

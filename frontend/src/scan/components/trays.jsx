@@ -24,6 +24,29 @@ export function ScanTray({ scanner, settings, onChange, onScan, scanning, phase,
         <button type="button" onClick={onRefreshScanner} className="text-[11px] font-semibold text-manta-300 hover:text-manta-200 px-2 h-8 rounded-lg hover:bg-white/5">{t('common.refresh')}</button>
       </div>
 
+      {scanner?.available_devices?.length > 1 && (
+        <Field label={t('studio.scan.device')}>
+          <select
+            value={settings.deviceId || scanner.device_id}
+            onChange={(e) => {
+              const devId = e.target.value;
+              const picked = scanner.available_devices.find((d) => d.device_id === devId);
+              onChange({
+                deviceId: devId,
+                source: picked?.sources?.[0] || 'Flatbed'
+              });
+            }}
+            className="studio-select"
+          >
+            {scanner.available_devices.map((d) => (
+              <option key={d.device_id} value={d.device_id}>
+                {d.name} ({d.driver})
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
       <Field label={t('studio.scan.preset')}>
         <div className="grid grid-cols-2 gap-1.5">
           {PRESETS.map((p) => (

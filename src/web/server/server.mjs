@@ -141,6 +141,9 @@ function parseSaneError(stderr = '', stdout = '', exitCode = 1) {
   if (combined.includes('device busy') || combined.includes('resource has been denied')) {
     return { code: 'ERR_DEVICE_BUSY', message: 'Scanner sedang sibuk atau sedang melakukan kalibrasi hardware.' };
   }
+  if (combined.includes('br-y') || combined.includes('br-x') || combined.includes('invalid argument')) {
+    return { code: 'ERR_GEOMETRY_INVALID', message: 'Ukuran kertas atau area pemindaian melebihi batas fisik scanner.' };
+  }
   return { code: 'ERR_SCAN_FAILED', message: 'Gagal memindai dokumen. Pastikan penutup tertutup dan scanner siap.' };
 }
 
@@ -736,7 +739,7 @@ const SCANNER_PROFILES = [
     resolutions: [75, 150, 300, 600],
     modes: ['Color', 'Gray'],
     formats: ['pdf', 'jpeg', 'png', 'tiff'],
-    max_geometry: { width: 216, height: 297 },
+    max_geometry: { width: 215.9, height: 296.9 },
     supported_paper_sizes: ['A4', 'Letter', 'ID Card'],
     usb_id: '03f0:*',
     match: /(^|[^a-z])hpaio:|hewlett|(^|\s)hp(\s|_).*(mfp|laserjet|deskjet|officejet|envy|smart tank)/i
@@ -775,7 +778,7 @@ async function checkBlankPage(imagePath) {
 }
 
 // Stale-While-Revalidate (SWR) Scanner Telemetry Cache
-const SWR_SCANNER_TTL = 10000; // 10s fresh window
+const SWR_SCANNER_TTL = 30000; // 30s fresh window
 let cachedScanner = null;
 let lastScannerProbe = 0;
 let isProbingScanner = false;
@@ -958,8 +961,9 @@ async function probeScannerTelemetry(forceFresh = false) {
 
     // 2. Direct probe for standalone USB scanners via SANE scanimage
     try {
-      const res = await runCmd('scanimage', ['-f', '%d|%v|%m|%t%n'], 6000);
+      const res = await runCmd('scanimage', ['-f', '%d|%v|%m|%t%n'], 25000);
       if (res.code === 0 && res.stdout.trim()) {
+        const allScanners = [];
         for (const line of res.stdout.split('\n')) {
           const trimmed = line.trim();
           if (!trimmed || trimmed.startsWith('<') || trimmed.includes('192.168.')) continue;
@@ -967,17 +971,22 @@ async function probeScannerTelemetry(forceFresh = false) {
           if (parts.length >= 3 && parts[0]) {
             const devId = parts[0].trim();
             const vendor = parts[1].trim() || 'Generic';
-            const model = parts[2].trim() || 'USB Scanner';
+            const rawModel = parts[2].trim() || 'USB Scanner';
+            const modelClean = rawModel.replace(/_/g, ' ');
             const typeStr = (parts[3] || '').toLowerCase();
-            const matched = matchScannerProfile(model, vendor, devId);
+            const matched = matchScannerProfile(rawModel, vendor, devId);
 
-            cachedScanner = {
+            const dispName = matched && matched.id !== 'hp-mfp-hpaio'
+              ? matched.name
+              : `${vendor !== 'Generic' && !modelClean.toLowerCase().includes(vendor.toLowerCase()) ? vendor + ' ' : ''}${modelClean}`.trim();
+
+            allScanners.push({
               connected: true,
               protocol: 'SANE',
               device_id: devId,
               profile_id: matched ? matched.id : 'generic-sane',
-              name: matched ? matched.name : `${vendor} ${model}`.trim(),
-              model: matched ? matched.model : model,
+              name: dispName,
+              model: matched ? matched.model : modelClean,
               vendor: matched ? matched.vendor : vendor,
               driver: matched ? matched.driver : (devId.split(':')[0] || 'sane'),
               type: matched ? matched.type : (typeStr.includes('adf') ? 'ADF' : 'Flatbed'),
@@ -988,23 +997,34 @@ async function probeScannerTelemetry(forceFresh = false) {
               resolutions: matched ? matched.resolutions : [75, 150, 300, 600],
               modes: matched ? matched.modes : ['Color', 'Gray'],
               formats: matched ? matched.formats : ['pdf', 'jpeg', 'png', 'tiff'],
-              max_geometry: matched ? matched.max_geometry : { width: 216, height: 297 },
-              supported_paper_sizes: matched ? matched.supported_paper_sizes : ['A4', 'ID Card'],
-              profiles: SCANNER_PROFILES.map(p => ({
-                id: p.id,
-                name: p.name,
-                vendor: p.vendor,
-                driver: p.driver,
-                type: p.type,
-                sources: p.sources,
-                duplex_capable: p.duplex_capable,
-                supported_paper_sizes: p.supported_paper_sizes
-              }))
-            };
-            withFirmwareHint(cachedScanner);
-            lastScannerProbe = Date.now();
-            return cachedScanner;
+              max_geometry: matched ? matched.max_geometry : ((devId.startsWith('hpaio:') || (vendor && vendor.toLowerCase().includes('hp'))) ? { width: 215.9, height: 296.9 } : { width: 216, height: 297 }),
+              supported_paper_sizes: matched ? matched.supported_paper_sizes : ['A4', 'ID Card']
+            });
           }
+        }
+
+        if (allScanners.length > 0) {
+          const cfg = configManager.getConfig();
+          const selectedId = cfg?.scanner?.selected_device_id;
+          let primary = (selectedId && allScanners.find(s => s.device_id === selectedId)) || allScanners[0];
+
+          cachedScanner = {
+            ...primary,
+            available_devices: allScanners,
+            profiles: SCANNER_PROFILES.map(p => ({
+              id: p.id,
+              name: p.name,
+              vendor: p.vendor,
+              driver: p.driver,
+              type: p.type,
+              sources: p.sources,
+              duplex_capable: p.duplex_capable,
+              supported_paper_sizes: p.supported_paper_sizes
+            }))
+          };
+          withFirmwareHint(cachedScanner);
+          lastScannerProbe = Date.now();
+          return cachedScanner;
         }
       }
     } catch {}
@@ -2740,7 +2760,7 @@ async function probePrinterTelemetry() {
     printers: allPrinters,
     published_printers: allPrinters.filter(p => p.is_published),
     scanner: scannerStatus,
-    scanners: scannerStatus?.connected ? [scannerStatus] : [],
+    scanners: scannerStatus?.available_devices || (scannerStatus?.connected ? [scannerStatus] : []),
     peripherals,
     published_peripherals: peripherals.filter(p => p.type === 'scanner' || p.is_published),
     custom_mdns: {
@@ -4147,11 +4167,39 @@ const server = http.createServer(async (req, res) => {
       const updatedScannerCfg = {
         ...currentScannerCfg,
         portal_enabled: parsed.portal_enabled !== undefined ? !!parsed.portal_enabled : currentScannerCfg.portal_enabled !== false,
-        remote_pwa_api_enabled: parsed.remote_pwa_api_enabled !== undefined ? !!parsed.remote_pwa_api_enabled : currentScannerCfg.remote_pwa_api_enabled !== false
+        remote_pwa_api_enabled: parsed.remote_pwa_api_enabled !== undefined ? !!parsed.remote_pwa_api_enabled : currentScannerCfg.remote_pwa_api_enabled !== false,
+        selected_device_id: parsed.selected_device_id !== undefined ? String(parsed.selected_device_id) : currentScannerCfg.selected_device_id
       };
       configManager.saveConfig({ scanner: updatedScannerCfg });
+      cachedScanner = null;
+      lastScannerProbe = 0;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, scanner: updatedScannerCfg }));
+      return;
+    }
+
+    // Which scanner the hub uses by default when several are plugged in (Admin > Scanner).
+    // Scan Studio does not change this: it names its scanner per request (device_id).
+    if (pathname === '/api/scanner/select' && req.method === 'POST') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
+        return;
+      }
+      const raw = await readBody(req);
+      const parsed = parseJsonBody(raw) || {};
+      if (parsed.device_id) {
+        const currentScannerCfg = configManager.getConfig()?.scanner || {};
+        configManager.saveConfig({ scanner: { ...currentScannerCfg, selected_device_id: String(parsed.device_id) } });
+        cachedScanner = null;
+        lastScannerProbe = 0;
+        const fresh = await probeScannerTelemetry(true);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, scanner: fresh }));
+        return;
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'device_id is required' }));
       return;
     }
 
@@ -4299,7 +4347,14 @@ const server = http.createServer(async (req, res) => {
           };
         }
       }
-      if (!sc) sc = getScannerStatusSWR();
+      const forceFresh = parsedUrl.searchParams.has('fresh') || parsedUrl.searchParams.has('rescan');
+      if (!sc) {
+        if (forceFresh) {
+          sc = await probeScannerTelemetry(true);
+        } else {
+          sc = getScannerStatusSWR();
+        }
+      }
 
       const cfg = configManager.getConfig();
       const status = scannerHardwareLock.getStatus();
@@ -4311,6 +4366,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({
         success: true,
         scanner: sc,
+        scanners: sc?.available_devices || (sc?.connected ? [sc] : []),
         mutex: status,
         portal_enabled: cfg?.scanner?.portal_enabled !== false,
         remote_pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false,
@@ -4436,6 +4492,14 @@ const server = http.createServer(async (req, res) => {
       const parsed = parseJsonBody(raw) || {};
       let sc = await probeScannerTelemetry();
 
+      const requestedDevId = parsed.device_id || parsed.deviceId;
+      if (requestedDevId && sc.available_devices) {
+        const found = sc.available_devices.find(d => d.device_id === requestedDevId);
+        if (found) {
+          sc = { ...sc, ...found };
+        }
+      }
+
       // Allow specifying mock scanner profile for appliance test suite
       if (parsed.mock && typeof parsed.mock === 'string') {
         const p = SCANNER_PROFILES.find(x => x.id === parsed.mock || x.model.toLowerCase().includes(parsed.mock.toLowerCase()));
@@ -4498,7 +4562,11 @@ const server = http.createServer(async (req, res) => {
         if (h > 10 && h < 5000) height = h;
       }
 
-      // Clamp geometry if hardware bed has physical limit (e.g. Flatbed LiDE max 297mm height)
+      // Clamp geometry if hardware bed has physical limit (e.g. Flatbed LiDE max 297mm height, HP MFP max 296.9mm height)
+      if (sc.driver === 'hpaio' || (sc.device_id && sc.device_id.startsWith('hpaio:')) || (sc.vendor && sc.vendor.toLowerCase().includes('hp'))) {
+        if (width > 215.9) width = 215.9;
+        if (height > 296.9) height = 296.9;
+      }
       if (sc.max_geometry) {
         if (sc.type === 'Flatbed' && height > sc.max_geometry.height) {
           height = sc.max_geometry.height;
@@ -4620,7 +4688,18 @@ im.save('${p2Path}', 'JPEG', quality=90)
           '--format=jpeg'
         ];
 
-        const scanRes = await runCmd('scanimage', args, 90000);
+        let scanRes = await runCmd('scanimage', args, 90000);
+        if (scanRes.code !== 0 && (scanRes.stderr.includes('br-y') || scanRes.stderr.includes('br-x') || scanRes.stderr.includes('Invalid argument'))) {
+          const fallbackArgs = [];
+          for (let i = 0; i < args.length; i++) {
+            if (args[i] === '-x' || args[i] === '-y') {
+              i++;
+              continue;
+            }
+            fallbackArgs.push(args[i]);
+          }
+          scanRes = await runCmd('scanimage', fallbackArgs, 90000);
+        }
         const p1 = path.join(SCAN_STORAGE_DIR, `batch_${scanId}_p1.jpg`);
         const p2 = path.join(SCAN_STORAGE_DIR, `batch_${scanId}_p2.jpg`);
 
@@ -4693,7 +4772,19 @@ im.save('${p2Path}', 'JPEG', quality=90)
           args.push('--source=Flatbed');
         }
 
-        const scanRes = await runCmd('scanimage', args, 90000);
+        let scanRes = await runCmd('scanimage', args, 90000);
+        if (scanRes.code !== 0 && (scanRes.stderr.includes('br-y') || scanRes.stderr.includes('br-x') || scanRes.stderr.includes('Invalid argument'))) {
+          // Hardware geometry mismatch: retry with default hardware platen geometry
+          const fallbackArgs = [];
+          for (let i = 0; i < args.length; i++) {
+            if (args[i] === '-x' || args[i] === '-y') {
+              i++;
+              continue;
+            }
+            fallbackArgs.push(args[i]);
+          }
+          scanRes = await runCmd('scanimage', fallbackArgs, 90000);
+        }
         const tempRaw = path.join(SCAN_STORAGE_DIR, `raw_${scanId}.jpg`);
 
         if (scanRes.code !== 0) {

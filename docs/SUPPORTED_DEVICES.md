@@ -7,8 +7,7 @@ This document provides the complete, authoritative compatibility list of printer
 
 > [!NOTE]
 > ### Reading "Auto-Provisioned" / "Plug-and-Play" below
-> Only **Canon G3030 and Canon LBP6030** have been verified on real appliance hardware (see the
-> benchmarked section right below). Every other row is a driver-package compatibility claim, not a
+> **Canon G3030, Canon LBP6030, Canon CanoScan LiDE 120, and HP LaserJet MFP M129-M134** have been verified on real appliance hardware (see the benchmarked section right below and [`15-multi-scanner-usb-telemetry.md`](15-multi-scanner-usb-telemetry.md)). Every other row is a driver-package compatibility claim, not a
 > hardware test — a family this large cannot be physically tested. As of this project's own QA/QC
 > audit, the hub now computes and shows a real per-printer readiness state at runtime (`ready`,
 > `needs_firmware`, `needs_review`, `unsupported`) instead of only asserting it in this document —
@@ -293,14 +292,8 @@ These units have dedicated profiles in `SCANNER_PROFILES` with optimized resolut
 | **HP** | Smart Tank 500/515, DeskJet Ink Advantage, LaserJet Pro MFP | `libsane-hpaio` / `escl` | 75, 150, 300, 600 | Color, Gray |
 
 > [!IMPORTANT]
-> **HP multifunction scanners need HP's proprietary plugin.** HPLIP prints without it, but for most
-> HP MFPs (LaserJet MFP M130a among them; HPLIP's `models.dat` marks them `plugin-reason` 64)
-> SANE's `hpaio` backend only lists the scanner once `hplip-<version>-plugin.run` is installed. The
-> plugin is HP-licensed and can't ship with the hub or be downloaded by it. When such a printer is
-> plugged in, **Admin → Scanner** shows "*needs HP's scanner plugin*" with the exact file name to
-> download from [developers.hp.com](https://developers.hp.com/hp-linux-imaging-and-printing/plugins)
-> (its version must equal the hub's HPLIP version) and an upload button; the hub runs `hp-plugin`
-> and re-probes. Not yet verified on real hardware: the arm64 plugin with an M130a on this hub.
+> **HP multifunction scanners & plugin requirements:**
+> While some HP MFPs (such as LaserJet MFP M130a; HPLIP `models.dat` marks them `plugin-reason` 64) require HP's proprietary closed-source plugin (`hplip-<version>-plugin.run`) to scan via SANE `hpaio`, other models such as **HP LaserJet MFP M129-M134** specify `plugin=0` in HPLIP and work **100% out of the box with zero proprietary plugins** (hardware-verified on this hub). When a plugin-requiring printer is plugged in, **Admin → Scanner** shows "*needs HP's scanner plugin*" with upload options. See [`15-multi-scanner-usb-telemetry.md`](15-multi-scanner-usb-telemetry.md) for full benchmark details.
 | **Brother** | DCP-1510, DCP-1610W, DCP-T420W, DCP-T520W, MFC-T920DW | `brother4` / `escl` | 100, 200, 300, 600 | Color, Gray |
 
 ---

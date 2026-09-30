@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.14] - 2026-09-30
+
+### Fixed
+- **Two USB scanners plugged in at once made the hub report "no scanner connected".** With several SANE backends to probe (genesys, hpaio, escl, pixma), `scanimage -L` takes 10–14 s on the S905X; the probe was killed after 6 s every time, so the cache stayed empty. The probe now waits up to 25 s and the scanner cache is fresh for 30 s instead of 10 s (the genesys backend also resets the USB device after every scan, so back-to-back probes were doing harm). Found with a CanoScan LiDE 120 and an HP LaserJet MFP M129-M134 on one hub.
+- **Only the first scanner was kept.** Every scanner `scanimage` lists is now reported (`available_devices` / `scanners` in `/api/scanner/status` and `/api/status`). Admin → Scanner shows one card per scanner with **Use as default** (`POST /api/scanner/select`, admin only, stored as `scanner.selected_device_id`), and Scan Studio gets a *Scanner* dropdown; the studio names its scanner per scan (`device_id` in `POST /api/scanner/scan`) without changing the hub's default. `?fresh=1` on `/api/scanner/status` forces a re-probe.
+- **A4 scans on HP MFPs failed with "make sure the lid is closed".** The HP flatbed is 215.9 × 296.926 mm, and `hpaio` rejects `-y 297` outright (`setting of option --br-y failed (Invalid argument)`). The HP profile and the runtime clamp now use 215.9 × 296.9 mm (less than one pixel at 300 dpi), a geometry rejection is retried once without `-x/-y`, and such errors are reported as `ERR_GEOMETRY_INVALID` with a matching message.
+
+### Changed
+- `docs/15-multi-scanner-usb-telemetry.md` documents the diagnosis, the genesys USB-reset quirk and the fact that the HP LaserJet MFP M129-M134 scans without HP's proprietary plugin (`plugin=0` in HPLIP's `models.dat`). `docs/SUPPORTED_DEVICES.md` lists both scanners as hardware-verified; `KNOWN-LIMITATIONS.md` S5 records the discovery delay.
+
+---
+
 ## [0.3.13] - 2026-09-30
 
 ### Fixed

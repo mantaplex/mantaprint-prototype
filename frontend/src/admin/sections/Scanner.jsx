@@ -263,9 +263,40 @@ export default function Scanner({ data, showToast, go }) {
     <div>
       <PageHeader title={t('adm.scanner.title')} description={t('adm.scanner.desc')} />
 
-      {/* A ScanSnap waiting on firmware *is* the scanner, so its card replaces the
-          "not detected" one; next to another working scanner it's shown as well. */}
-      {(connected || (!needsFw && !needsHp)) && (
+      {/* Several scanners plugged in: one card each; the active one is the hub's default,
+          Scan Studio can still pick any of them per scan. */}
+      {status?.scanners?.length > 1 ? (
+        <div className="space-y-3">
+          {status.scanners.map((dev) => {
+            const isSelected = dev.device_id === scanner?.device_id;
+            return (
+              <Card key={dev.device_id}>
+                <CardHeader
+                  icon={ScanLine}
+                  title={dev.name}
+                  description={`${dev.driver || 'SANE'} · ${(dev.sources || []).join(' / ')}`}
+                  actions={
+                    <div className="flex items-center gap-2">
+                      <StatusPill tone={isSelected ? (mutex?.is_busy ? 'info' : 'ok') : 'idle'} pulse={isSelected && Boolean(mutex?.is_busy)}>
+                        {isSelected ? (mutex?.is_busy ? t('adm.scanner.busy', { who: mutex.holder?.name || '…' }) : t('adm.scanner.multi.active')) : t('adm.scanner.multi.available')}
+                      </StatusPill>
+                      {!isSelected && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => act('select', () => adminFetch('/api/scanner/select', { method: 'POST', body: { device_id: dev.device_id } }), t('adm.common.saved'))}
+                        >
+                          {t('adm.scanner.multi.select')}
+                        </Button>
+                      )}
+                    </div>
+                  }
+                />
+              </Card>
+            );
+          })}
+        </div>
+      ) : (connected || (!needsFw && !needsHp)) && (
         <Card>
           <CardHeader icon={ScanLine} title={connected ? scanner.name : pending ? pending.model : t('adm.scanner.none')} description={connected ? `${scanner.driver || 'SANE'} · ${(scanner.sources || []).join(' / ')}` : pendingPlugin ? t('adm.scanner.hp.pendingDesc') : pending ? t('adm.scanner.fw.pendingDesc') : t('adm.scanner.noneDesc')}
             actions={<StatusPill tone={connected ? (mutex?.is_busy ? 'info' : 'ok') : pending ? 'warn' : 'idle'} pulse={Boolean(mutex?.is_busy)}>{connected ? (mutex?.is_busy ? t('adm.scanner.busy', { who: mutex.holder?.name || mutex.holder?.client_name || '…' }) : t('adm.scanner.ready')) : pendingPlugin ? t('adm.scanner.hp.missing') : pending ? t('adm.scanner.fw.missing') : t('adm.scanner.offline')}</StatusPill>} />

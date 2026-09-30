@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "semantic": {
     "major": 0,
     "minor": 3,
-    "patch": 13
+    "patch": 14
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.3.13"
+    "tag": "v0.3.14"
   },
   "build": {
-    "timestamp": "2026-09-30T02:00:00Z",
+    "timestamp": "2026-09-30T06:30:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,14 +22,14 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Fix: two USB scanners at once were invisible (SANE probe timeout 6s -> 25s); every scanner is listed, Admin > Scanner picks the default and Scan Studio picks per scan; HP MFP A4 scans no longer fail on the platen geometry (clamped to 215.9 x 296.9 mm, retry without -x/-y).",
     "Fix: install.sh aborted with 'SUDO_USER: unbound variable' when run directly as root.",
-    "Fix: Overview > Services layout on phones (short Standby pill, explanation in the description, status and Restart wrap to their own line).",
-    "Fix: Admin > Scanner no longer offers the HP plugin upload after the plugin is installed; the row shows an Installed pill instead."
+    "Fix: Overview > Services layout on phones (short Standby pill, explanation in the description, status and Restart wrap to their own line)."
   ],
   "components": {
-    "core": "0.3.13",
-    "web": "0.3.13",
-    "frontend": "0.3.13",
+    "core": "0.3.14",
+    "web": "0.3.14",
+    "frontend": "0.3.14",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

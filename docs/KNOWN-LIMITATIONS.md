@@ -30,6 +30,7 @@ office/branch LAN.
 | S2 | Documents are kept in the browser's **IndexedDB, unencrypted**, until the user deletes them. | Anyone with access to that browser profile (shared PCs, kiosks) can open earlier scans. | Medium |
 | S3 | Because the hub is not a secure context (HTTP), browser features such as service workers, the async clipboard and `crypto.subtle` are unavailable; some fallbacks are less robust. | Reduced functionality; no client-side encryption possible. | Low |
 | S4 | The standalone Scanner PWA pairs with a hub using tokens that travel over HTTP. | Pairing tokens can be intercepted and reused. | Medium |
+| S5 | **Multi-scanner USB bus enumeration latency.** When 2 or more USB scanners/MFPs are plugged in simultaneously, SANE probes all backends sequentially (~10–14s on ARM64). The probe timeout was raised from 6s to 25s to prevent timeouts, but initial scanner discovery on boot or multi-USB replug has a short delay before all devices appear in the UI. | Scanners take up to ~15s to appear after connecting multiple devices at once. | Low |
 
 ## 3. MantaPool (fleet controller, `apps/mantaman`)
 

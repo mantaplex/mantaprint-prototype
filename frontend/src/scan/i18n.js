@@ -51,6 +51,7 @@ export const studioEn = {
   },
   filters: { none: 'Original', clean: 'Clean', bw: 'Black & white', gray: 'Grayscale', dual_layer: 'Text + stamps', color: 'Vivid' },
   scan: {
+    device: 'Scanner',
     preset: 'Preset', paper: 'Paper', dpi: 'Resolution', recommended: 'recommended', color: 'Colour', colorMode: 'Colour', gray: 'Gray', source: 'Source', flatbed: 'Flatbed',
     scanPage: 'Scan page', scanning: 'Scanning…', phasePrepare: 'Preparing scanner…', phaseScanning: 'Scanning page…', phaseTransfer: 'Transferring to this device…',
     busy: 'Scanner is in use by {holder}. Try again in {sec}s.', failed: 'Scan failed.',
@@ -145,6 +146,7 @@ export const studioId = {
   },
   filters: { none: 'Asli', clean: 'Bersih', bw: 'Hitam-putih', gray: 'Abu-abu', dual_layer: 'Teks + stempel', color: 'Vivid' },
   scan: {
+    device: 'Scanner',
     preset: 'Preset', paper: 'Kertas', dpi: 'Resolusi', recommended: 'disarankan', color: 'Warna', colorMode: 'Warna', gray: 'Abu-abu', source: 'Sumber', flatbed: 'Flatbed',
     scanPage: 'Pindai halaman', scanning: 'Memindai…', phasePrepare: 'Menyiapkan scanner…', phaseScanning: 'Memindai halaman…', phaseTransfer: 'Mentransfer ke perangkat ini…',
     busy: 'Scanner sedang dipakai oleh {holder}. Coba lagi dalam {sec} detik.', failed: 'Pemindaian gagal.',

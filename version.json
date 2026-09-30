@@ -1,19 +1,19 @@
 {
   "name": "mantaprint-hub",
   "appliance": "mantaprint-hub",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "semantic": {
     "major": 0,
     "minor": 3,
-    "patch": 12
+    "patch": 13
   },
   "git": {
     "commit": "HEAD",
     "branch": "main",
-    "tag": "v0.3.12"
+    "tag": "v0.3.13"
   },
   "build": {
-    "timestamp": "2026-09-29T20:00:00Z",
+    "timestamp": "2026-09-30T02:00:00Z",
     "target_arch": "aarch64",
     "soc": "meson64-s905x",
     "os": "Armbian Linux (Debian 12 Bookworm)",
@@ -22,14 +22,14 @@
   },
   "channel": "prototype",
   "changelog": [
+    "Fix: install.sh aborted with 'SUDO_USER: unbound variable' when run directly as root.",
     "Fix: Overview > Services layout on phones (short Standby pill, explanation in the description, status and Restart wrap to their own line).",
-    "Fix: Admin > Scanner no longer offers the HP plugin upload after the plugin is installed; the row shows an Installed pill instead.",
-    "Drivers & devices: steps that need several files (HP plugin .asc + .run, HP LaserJet .dl per model, ScanSnap .nal per scanner) show one row per file with its own upload button and a check mark once it is on the hub."
+    "Fix: Admin > Scanner no longer offers the HP plugin upload after the plugin is installed; the row shows an Installed pill instead."
   ],
   "components": {
-    "core": "0.3.12",
-    "web": "0.3.12",
-    "frontend": "0.3.12",
+    "core": "0.3.13",
+    "web": "0.3.13",
+    "frontend": "0.3.13",
     "smart_usb_backend": "1.2.0",
     "captdriver": "0.2.0"
   }

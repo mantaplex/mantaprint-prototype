@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Versions 0.4.0, 0.5.0 and 0.5.1 were renumbered to 0.3.3, 0.3.4 and 0.3.5 on the day of release
 > (the project stays on 0.3.x while it is a prototype); their tags and releases were removed.
 
+## [0.3.13] - 2026-09-30
+
+### Fixed
+- **`install.sh` aborted with `SUDO_USER: unbound variable`** when run directly as root (no `sudo`), right after enabling CUPS. The installer now treats a missing `SUDO_USER` as empty. Re-running the installer after the failure is safe.
+
+---
+
 ## [0.3.12] - 2026-09-29
 
 ### Fixed

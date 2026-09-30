@@ -317,7 +317,7 @@ if [ -f "$SCRIPT_DIR/config/cupsd.conf" ]; then
     systemctl restart cups.service
 fi
 usermod -a -G lp,lpadmin root 2>/dev/null || true
-if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then
     usermod -a -G lp,lpadmin "$SUDO_USER" 2>/dev/null || true
 fi
 

@@ -810,7 +810,10 @@ export function detectCardContour(imgBuffer) {
   // If card is portrait, adjust aspect ratio calculation
   const currentRatio = origW >= origH ? origW / origH : origH / origW;
   const ratioDelta = Math.abs(currentRatio - CR80_ASPECT_RATIO);
-  const confidence = Math.max(0.2, Math.min(0.98, 1.0 - ratioDelta / CR80_ASPECT_RATIO));
+  const coversFullFrame = origW >= w * 0.9 && origH >= h * 0.9;
+  const confidence = (coversFullFrame && ratioDelta > 0.25)
+    ? 0.1
+    : Math.max(0.2, Math.min(0.98, 1.0 - ratioDelta / CR80_ASPECT_RATIO));
 
   return {
     x: Math.max(0, Math.min(w - 1, origX)),
@@ -1010,15 +1013,15 @@ export function createKtp2in1Template(frontCard, backCard, options = {}) {
   const canvas = createImageBuffer(a4Width, a4Height);
   canvas.data.fill(255);
 
-  // Process & resize front card
-  let procFront = frontCard;
+  // Process & resize front card (auto-rotate portrait cards to landscape CR80)
+  let procFront = frontCard.height > frontCard.width ? rotateImageBuffer(frontCard, 90) : frontCard;
   if (applyToneMapping) {
     procFront = enhanceIdCardTone(procFront);
   }
   const resizedFront = resizeImageBuffer(procFront, cardWidth, cardHeight);
 
-  // Process & resize back card
-  let procBack = backCard;
+  // Process & resize back card (auto-rotate portrait cards to landscape CR80)
+  let procBack = backCard.height > backCard.width ? rotateImageBuffer(backCard, 90) : backCard;
   if (applyToneMapping) {
     procBack = enhanceIdCardTone(procBack);
   }

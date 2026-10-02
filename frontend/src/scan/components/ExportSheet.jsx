@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Download, Loader2, FileText, Image as ImageIcon, FileArchive, HardDriveDownload, FileType, FileType2, ScanText } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nContext.jsx';
 import { Button, Field, Segmented, Modal, formatBytes } from './ui.jsx';
@@ -27,6 +27,18 @@ export default function ExportSheet({ open, onClose, doc, pageCount, selectedCou
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
+  const closeTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setFilename(doc?.title || 'scan');
+      setPaperSize(doc?.paperSize || 'A4');
+      setResult(null);
+    }
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, [open, doc?.title, doc?.paperSize]);
 
   const run = async () => {
     setBusy(true);
@@ -34,7 +46,10 @@ export default function ExportSheet({ open, onClose, doc, pageCount, selectedCou
     try {
       const r = await onExport({ format, scope, paperSize, fitMode, quality, filename, searchable }, (i, n) => setProgress({ i, n }));
       setResult(r);
-      if (r?.method !== 'cancelled') setTimeout(onClose, 900);
+      if (r?.method !== 'cancelled') {
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = setTimeout(onClose, 900);
+      }
     } finally {
       setBusy(false);
       setProgress(null);

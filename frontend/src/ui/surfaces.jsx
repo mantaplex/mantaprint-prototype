@@ -188,12 +188,32 @@ export function SideSheet({ open, onClose, title, subtitle, children, footer }) 
 /** Copyable monospace value. */
 export function CopyField({ label, value }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    try {
-      navigator.clipboard?.writeText(value);
+  const copy = async () => {
+    let ok = false;
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(value);
+        ok = true;
+      } catch {}
+    }
+    if (!ok && typeof document !== 'undefined') {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = String(value ?? '');
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {}
+    }
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
-    } catch {}
+    }
   };
   return (
     <div className="min-w-0">

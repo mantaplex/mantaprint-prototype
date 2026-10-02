@@ -82,7 +82,13 @@ function openDb() {
     };
     req.onsuccess = () => {
       const db = req.result;
-      db.onversionchange = () => db.close();
+      db.onversionchange = () => {
+        dbPromise = null;
+        db.close();
+      };
+      db.onclose = () => {
+        dbPromise = null;
+      };
       resolve(db);
     };
     req.onerror = () => reject(req.error);
@@ -217,6 +223,9 @@ export async function duplicateDocument(id) {
   };
   const newPages = pages.map((p) => ({ ...p, id: uid('pg'), docId: newDoc.id }));
   newDoc.pageIds = newPages.map((p) => p.id);
+  newDoc.pageCount = newPages.length;
+  newDoc.sizeBytes = newPages.reduce((sum, p) => sum + (p.blob?.size || 0), 0);
+  newDoc.cover = newPages[0]?.thumb || source.cover || null;
   await tx([STORE_DOCS, STORE_PAGES], 'readwrite', (t) => {
     t.objectStore(STORE_DOCS).put(newDoc);
     for (const p of newPages) t.objectStore(STORE_PAGES).put(p);
@@ -236,10 +245,7 @@ export async function getPagesForDocument(docId) {
   );
   if (!doc) return pages;
   const byId = new Map(pages.map((p) => [p.id, p]));
-  const ordered = doc.pageIds.map((pid) => byId.get(pid)).filter(Boolean);
-  // Pages missing from the order list (should not happen) are appended.
-  for (const p of pages) if (!doc.pageIds.includes(p.id)) ordered.push(p);
-  return ordered;
+  return doc.pageIds.map((pid) => byId.get(pid)).filter(Boolean);
 }
 
 export async function getPage(id) {
@@ -270,12 +276,13 @@ export async function addPage(docId, page, { index = null } = {}) {
     const pageIds = [...current.pageIds];
     if (index === null || index < 0 || index > pageIds.length) pageIds.push(stored.id);
     else pageIds.splice(index, 0, stored.id);
+    const isFirst = pageIds[0] === stored.id;
     const next = {
       ...current,
       pageIds,
       pageCount: pageIds.length,
       sizeBytes: (current.sizeBytes || 0) + (stored.blob?.size || 0),
-      cover: current.cover || stored.thumb || null,
+      cover: (isFirst && stored.thumb) ? stored.thumb : (current.cover || stored.thumb || null),
       updatedAt: Date.now()
     };
     docs.put(next);

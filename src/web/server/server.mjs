@@ -7165,6 +7165,12 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
     }
 
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      res.writeHead(404, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ status: 'error', message: 'Endpoint API tidak ditemukan.' }));
+      return;
+    }
+
     // --- STATIC ASSET SERVING (SPA) & STRICT PATH TRAVERSAL GUARD ---
     const resolvedAsset = resolveStaticAsset(DIST_DIR, pathname, req.headers);
     if (resolvedAsset.status === 304) {

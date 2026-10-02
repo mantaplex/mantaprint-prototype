@@ -459,11 +459,17 @@ def merge_documents(input_files, output_path, output_format="pdf"):
     all_pdfs = all(f.lower().endswith(".pdf") for f in input_files)
     if all_pdfs and output_format == "pdf":
         import subprocess
-        cmd = ["pdfunite"] + input_files + [output_path]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode == 0:
-            print(f"OK:{output_path}")
-            return
+        for cmd in (
+            ["qpdf", "--empty", "--pages"] + input_files + ["--", output_path],
+            ["pdfunite"] + input_files + [output_path],
+        ):
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                if res.returncode == 0 and os.path.exists(output_path):
+                    print(f"OK:{output_path}")
+                    return
+            except (FileNotFoundError, subprocess.SubprocessError):
+                pass
 
     # Load all images
     images = []
@@ -471,10 +477,9 @@ def merge_documents(input_files, output_path, output_format="pdf"):
         if not os.path.exists(f):
             continue
         try:
-            im = Image.open(f)
-            if im.mode != "RGB":
-                im = im.convert("RGB")
-            images.append(im)
+            with Image.open(f) as raw_im:
+                im = raw_im.convert("RGB")
+                images.append(im)
         except Exception as e:
             sys.stderr.write(f"Error opening {f}: {e}\n")
 
@@ -485,44 +490,47 @@ def merge_documents(input_files, output_path, output_format="pdf"):
     first = images[0]
     rest = images[1:]
 
-    if output_format == "pdf":
-        first.save(output_path, "PDF", resolution=300.0, save_all=True, append_images=rest)
-    elif output_format in ["tiff", "tif"]:
-        first.save(output_path, "TIFF", compression="tiff_deflate", save_all=True, append_images=rest)
-    elif output_format == "png":
-        if not rest:
-            first.save(output_path, "PNG")
+    try:
+        if output_format == "pdf":
+            first.save(output_path, "PDF", resolution=300.0, save_all=True, append_images=rest)
+        elif output_format in ["tiff", "tif"]:
+            first.save(output_path, "TIFF", compression="tiff_deflate", save_all=True, append_images=rest)
+        elif output_format == "png":
+            if not rest:
+                first.save(output_path, "PNG")
+            else:
+                total_height = sum(im.height for im in images)
+                max_width = max(im.width for im in images)
+                stitched = Image.new("RGB", (max_width, total_height), (255, 255, 255))
+                y_offset = 0
+                for im in images:
+                    stitched.paste(im, (0, y_offset))
+                    y_offset += im.height
+                stitched.save(output_path, "PNG")
+                stitched.close()
+        elif output_format in ["jpeg", "jpg"]:
+            if not rest:
+                first.save(output_path, "JPEG", quality=92)
+            else:
+                total_height = sum(im.height for im in images)
+                max_width = max(im.width for im in images)
+                stitched = Image.new("RGB", (max_width, total_height), (255, 255, 255))
+                y_offset = 0
+                for im in images:
+                    stitched.paste(im, (0, y_offset))
+                    y_offset += im.height
+                stitched.save(output_path, "JPEG", quality=90)
+                stitched.close()
         else:
-            total_height = sum(im.height for im in images)
-            max_width = max(im.width for im in images)
-            stitched = Image.new("RGB", (max_width, total_height), (255, 255, 255))
-            y_offset = 0
-            for im in images:
-                stitched.paste(im, (0, y_offset))
-                y_offset += im.height
-            stitched.save(output_path, "PNG")
-    elif output_format in ["jpeg", "jpg"]:
-        if not rest:
-            first.save(output_path, "JPEG", quality=92)
-        else:
-            total_height = sum(im.height for im in images)
-            max_width = max(im.width for im in images)
-            stitched = Image.new("RGB", (max_width, total_height), (255, 255, 255))
-            y_offset = 0
-            for im in images:
-                stitched.paste(im, (0, y_offset))
-                y_offset += im.height
-            stitched.save(output_path, "JPEG", quality=90)
-    else:
-        first.save(output_path)
-
-    for im in images:
-        try:
-            im.close()
-        except Exception:
-            pass
-    images.clear()
-    gc.collect()
+            first.save(output_path)
+    finally:
+        for im in images:
+            try:
+                im.close()
+            except Exception:
+                pass
+        images.clear()
+        gc.collect()
 
     print(f"OK:{output_path}")
 
@@ -531,15 +539,19 @@ def detect_blank(input_path, dark_thresh=200, max_dark_pixels=15, max_stddev=3.5
         sys.stderr.write(f"Input file not found: {input_path}\n")
         sys.exit(1)
     try:
-        im = Image.open(input_path).convert('L')
+        with Image.open(input_path) as raw_im:
+            im = raw_im.convert('L')
         w, h = im.size
         # Margin crop (3%) to remove feeder/roller margin shadows
         margin_w = max(1, int(w * 0.03))
         margin_h = max(1, int(h * 0.03))
-        cropped = im.crop((margin_w, margin_h, w - margin_w, h - margin_h))
+        if w > 2 * margin_w and h > 2 * margin_h:
+            cropped = im.crop((margin_w, margin_h, w - margin_w, h - margin_h))
+        else:
+            cropped = im
         # Downsample for lightning-fast inspection
         sample_w = 300
-        sample_h = max(1, int(300 * (h / w)))
+        sample_h = max(1, int(300 * (h / max(1, w))))
         sampled = cropped.resize((sample_w, sample_h))
         stat = ImageStat.Stat(sampled)
         hist = sampled.histogram()

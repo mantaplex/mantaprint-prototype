@@ -25,11 +25,19 @@ function uploadRaw(url, file, onProgress) {
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
     xhr.onload = () => {
+      if (xhr.status === 401) {
+        try {
+          localStorage.removeItem('mantaprint_admin_token');
+          window.dispatchEvent(new CustomEvent('mantaprint:unauthorized'));
+        } catch {}
+      }
       let body = null;
       try { body = JSON.parse(xhr.responseText); } catch {}
       resolve(body || { success: false, code: 'generic' });
     };
     xhr.onerror = () => reject(new Error('upload_failed'));
+    xhr.onabort = () => reject(new Error('upload_failed'));
+    xhr.ontimeout = () => reject(new Error('upload_failed'));
     xhr.send(file);
   });
 }
@@ -171,7 +179,7 @@ function FirmwareNeeded({ fw, device, onDone, showToast }) {
   );
 }
 
-export default function Scanner({ data, showToast, go }) {
+export default function Scanner({ data, refresh, showToast, go }) {
   const { t } = useI18n();
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -197,7 +205,7 @@ export default function Scanner({ data, showToast, go }) {
 
   const act = async (key, fn, ok) => {
     setBusy(key);
-    try { await fn(); if (ok) showToast?.(ok, 'success'); await load(); } catch (e) { showToast?.(e.message, 'error'); } finally { setBusy(null); }
+    try { await fn(); if (ok) showToast?.(ok, 'success'); await load(); refresh?.(); } catch (e) { showToast?.(e.message, 'error'); } finally { setBusy(null); }
   };
 
   const scanner = status?.scanner || data?.scanner;

@@ -16,12 +16,13 @@ function Section({ icon, title, description, children, actions }) {
 }
 
 /** Lockdown mode (print-only firewall). The same switch exists in the TUI. */
-function LockdownSection({ showToast, t }) {
+function LockdownSection({ showToast, t, refresh }) {
   const [st, setSt] = useState(null);
   const [ips, setIps] = useState('');
   const [ssh, setSsh] = useState(false);
   const [pin, setPin] = useState('');
   const [pinNew, setPinNew] = useState('');
+  const [disablePin, setDisablePin] = useState('');
   const [busy, setBusy] = useState(null);
   const [confirm, setConfirm] = useState(null); // 'enable' | 'disable'
   const [touched, setTouched] = useState(false);
@@ -41,7 +42,7 @@ function LockdownSection({ showToast, t }) {
     setBusy(key); setError('');
     try { const r = await fn(); if (!r.success) fail(r); else { showToast?.(t('adm.common.saved'), 'success'); setTouched(false); } }
     catch (e) { try { fail(JSON.parse(e.message)); } catch { fail({ code: e.message }); } }
-    finally { setBusy(null); setConfirm(null); setPin(''); load(); }
+    finally { setBusy(null); setConfirm(null); setPin(''); setDisablePin(''); load(); refresh?.(); }
   };
 
   const enabled = Boolean(st?.enabled);
@@ -67,7 +68,7 @@ function LockdownSection({ showToast, t }) {
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" icon={busy === 'cfg' ? Loader2 : Check} disabled={Boolean(busy) || !touched} onClick={() => act('cfg', () => adminFetch('/api/lockdown/config', { method: 'POST', body: { admin_ips: ips, ssh_from_admin: ssh } }))}>{t('adm.settings.lockdown.saveAccess')}</Button>
           {enabled
-            ? <Button variant="primary" icon={Unlock} disabled={Boolean(busy)} onClick={() => setConfirm('disable')}>{t('adm.settings.lockdown.turnOff')}</Button>
+            ? <Button variant="primary" icon={Unlock} disabled={Boolean(busy)} onClick={() => { setDisablePin(''); setConfirm('disable'); }}>{t('adm.settings.lockdown.turnOff')}</Button>
             : <Button variant="danger" icon={Lock} disabled={Boolean(busy) || (st && !st.nft_available)} onClick={() => setConfirm('enable')}>{t('adm.settings.lockdown.turnOn')}</Button>}
         </div>
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
@@ -78,12 +79,12 @@ function LockdownSection({ showToast, t }) {
         {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
       </div>
 
-      <Modal open={Boolean(confirm)} onClose={() => setConfirm(null)} title={confirm === 'enable' ? t('adm.settings.lockdown.confirmOnTitle') : t('adm.settings.lockdown.confirmOffTitle')}
+      <Modal open={Boolean(confirm)} onClose={() => { setConfirm(null); setDisablePin(''); }} title={confirm === 'enable' ? t('adm.settings.lockdown.confirmOnTitle') : t('adm.settings.lockdown.confirmOffTitle')}
         footer={<>
-          <Button variant="ghost" onClick={() => setConfirm(null)}>{t('common.cancel')}</Button>
+          <Button variant="ghost" onClick={() => { setConfirm(null); setDisablePin(''); }}>{t('common.cancel')}</Button>
           {confirm === 'enable'
             ? <Button variant="danger" icon={busy ? Loader2 : Lock} disabled={Boolean(busy)} onClick={() => act('on', () => adminFetch('/api/lockdown/enable', { method: 'POST', body: { admin_ips: ips, ssh_from_admin: ssh } }))}>{t('adm.settings.lockdown.turnOn')}</Button>
-            : <Button variant="primary" icon={busy ? Loader2 : Unlock} disabled={Boolean(busy) || !pin} onClick={() => act('off', () => adminFetch('/api/lockdown/disable', { method: 'POST', body: { pin } }))}>{t('adm.settings.lockdown.turnOff')}</Button>}
+            : <Button variant="primary" icon={busy ? Loader2 : Unlock} disabled={Boolean(busy) || !disablePin} onClick={() => act('off', () => adminFetch('/api/lockdown/disable', { method: 'POST', body: { pin: disablePin } }))}>{t('adm.settings.lockdown.turnOff')}</Button>}
         </>}>
         {confirm === 'enable' ? (
           <div className="text-sm text-slate-300 space-y-2">
@@ -97,7 +98,7 @@ function LockdownSection({ showToast, t }) {
         ) : (
           <div className="text-sm text-slate-300 space-y-3">
             <p>{t('adm.settings.lockdown.confirmOffBody')}</p>
-            <Field label={t('adm.settings.lockdown.pin')}><PasswordInput value={pin} autoComplete="off" onChange={(e) => setPin(e.target.value)} /></Field>
+            <Field label={t('adm.settings.lockdown.pin')}><PasswordInput value={disablePin} autoComplete="off" onChange={(e) => setDisablePin(e.target.value)} /></Field>
           </div>
         )}
       </Modal>
@@ -126,7 +127,14 @@ export default function Settings({ data, refresh, showToast, adminUser }) {
   const [hostname, setHostname] = useState('');
   const [tz, setTz] = useState('');
   const [ntp, setNtp] = useState({ enabled: true, servers: '' });
-  const [manual, setManual] = useState(() => { const d = new Date(); return { date: d.toISOString().slice(0, 10), time: d.toTimeString().slice(0, 5) }; });
+  const [manual, setManual] = useState(() => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    };
+  });
   const [profile, setProfile] = useState(null);
   const [acct, setAcct] = useState({ currentPassword: '', newUsername: '', newPassword: '', confirmPassword: '' });
   const [confirmReboot, setConfirmReboot] = useState(false);
@@ -252,7 +260,7 @@ export default function Settings({ data, refresh, showToast, adminUser }) {
       </div>
 
       <div className="mt-6">
-        <LockdownSection showToast={showToast} t={t} />
+        <LockdownSection showToast={showToast} t={t} refresh={refresh} />
       </div>
 
       <div className="mt-6">

@@ -50,8 +50,11 @@ export default function PrintDialog({ open, onClose, printers, initialQueue, onJ
     setFile(f);
   };
 
+  const normalizedRange = opts.range.replace(/\s+/g, '');
+  const rangeValid = opts.pages !== 'custom' || /^(\d+(-\d+)?)(,\d+(-\d+)?)*$/.test(normalizedRange);
+
   const submit = async () => {
-    if (!file || !selected) return;
+    if (!file || !selected || !rangeValid) return;
     setSending(true);
     try {
       const res = await printFile(file, {
@@ -60,7 +63,7 @@ export default function PrintDialog({ open, onClose, printers, initialQueue, onJ
         media: opts.media,
         orientation: opts.orientation,
         duplex: opts.duplex,
-        pageRanges: opts.pages === 'custom' ? opts.range.trim() : ''
+        pageRanges: opts.pages === 'custom' ? normalizedRange : ''
       });
       rememberMyJob({ id: res.job_id, token: res.job_token, title: file.name, printer: printerLabel(selected) });
       onJobSubmitted?.();
@@ -83,7 +86,7 @@ export default function PrintDialog({ open, onClose, printers, initialQueue, onJ
       footer={
         <>
           <Button variant="ghost" onClick={close} disabled={sending}>{t('common.cancel')}</Button>
-          <Button variant="primary" icon={sending ? Loader2 : Printer} onClick={submit} disabled={sending || !selected || !file}>
+          <Button variant="primary" icon={sending ? Loader2 : Printer} onClick={submit} disabled={sending || !selected || !file || !rangeValid}>
             {sending ? t('hub.print.sending') : t('hub.print.print')}
           </Button>
         </>

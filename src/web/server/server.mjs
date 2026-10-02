@@ -1181,7 +1181,7 @@ function syncAvahiInterfaceBinding(activeIface) {
   try {
     if (fs.existsSync(confPath)) {
       let content = fs.readFileSync(confPath, 'utf8');
-      const targetLine = `allow-interfaces=${activeIface}`;
+      const targetLine = `allow-interfaces=${activeIface},lo`;
       let newContent = content;
       if (/^\s*allow-interfaces\s*=/m.test(content)) {
         newContent = content.replace(/^\s*allow-interfaces\s*=.*$/m, targetLine);
@@ -2256,7 +2256,7 @@ async function probePrinterTelemetry() {
         classification = 'active_usb';
         canDelete = false;
         qConn = true;
-        isPublished = true;
+        isPublished = pOverrides.is_published !== undefined ? Boolean(pOverrides.is_published) : true;
         const out = ippRes.stdout;
         const mMM = out.match(/printer-make-and-model\s+\([^)]+\)\s*=\s*(.+)/);
         const mNames = out.match(/marker-names\s+\([^)]+\)\s*=\s*(.+)/);
@@ -3005,19 +3005,43 @@ async function readJsonBody(req, maxBytes = 64 * 1024) {
 function readBody(req, maxBytes = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let settled = false;
     const chunks = [];
+    const cleanup = () => {
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+      req.off('aborted', onAbort);
+    };
     const onData = (chunk) => {
       size += chunk.length;
       if (size > maxBytes) {
-        req.off('data', onData);
+        if (settled) return;
+        settled = true;
+        cleanup();
+        try { req.resume(); } catch {}
         reject(new Error('PAYLOAD_TOO_LARGE'));
         return;
       }
       chunks.push(chunk);
     };
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const onError = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+    const onAbort = () => onError(new Error('REQUEST_ABORTED'));
     req.on('data', onData);
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', (err) => reject(err));
+    req.on('end', onEnd);
+    req.on('error', onError);
+    req.once('aborted', onAbort);
   });
 }
 
@@ -3472,6 +3496,11 @@ const server = http.createServer(async (req, res) => {
 
     // CUPS Web UI Reverse Proxy (/cups/* -> 127.0.0.1:631/*)
     if (pathname.startsWith('/cups')) {
+      if (!isAdminOrLocal(req)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan untuk akses CUPS.' }));
+        return;
+      }
       const targetPath = pathname.replace(/^\/cups/, '') || '/';
       const cupsUrl = `http://127.0.0.1:631${targetPath}${url.search}`;
       
@@ -3487,8 +3516,14 @@ const server = http.createServer(async (req, res) => {
       });
 
       proxyReq.on('error', (err) => {
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
-        res.end('CUPS daemon unavailable: ' + err.message);
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'text/plain' });
+          res.end('CUPS daemon unavailable: ' + err.message);
+        }
+      });
+
+      req.once('close', () => {
+        if (!res.writableEnded) proxyReq.destroy();
       });
 
       req.pipe(proxyReq);
@@ -3498,6 +3533,12 @@ const server = http.createServer(async (req, res) => {
     // --- SCANNER & eSCL ROUTES ---
     // Reverse proxy eSCL (Apple AirScan & Mopria Scan) to local ipp-usb
     if (pathname.startsWith('/eSCL/')) {
+      const cfg = configManager.getConfig();
+      if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Layanan WebScan saat ini dinonaktifkan oleh Administrator.' }));
+        return;
+      }
       const proxyReq = http.request({
         hostname: '127.0.0.1',
         port: 60000,
@@ -3512,8 +3553,13 @@ const server = http.createServer(async (req, res) => {
         proxyRes.pipe(res);
       });
       proxyReq.on('error', () => {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Scanner eSCL endpoint offline.' }));
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Scanner eSCL endpoint offline.' }));
+        }
+      });
+      req.once('close', () => {
+        if (!res.writableEnded) proxyReq.destroy();
       });
       req.pipe(proxyReq);
       return;
@@ -3526,6 +3572,12 @@ const server = http.createServer(async (req, res) => {
     // These endpoints are kept only for API compatibility and are scheduled for removal.
     // They answer with RFC 8594 Deprecation/Sunset headers so any remaining caller is visible in logs.
     if (DEPRECATED_SCAN_ENDPOINTS.has(pathname)) {
+      const cfg = configManager.getConfig();
+      if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Layanan WebScan saat ini dinonaktifkan oleh Administrator.' }));
+        return;
+      }
       res.setHeader('Deprecation', 'true');
       res.setHeader('Sunset', DEPRECATED_SCAN_SUNSET);
       res.setHeader('Warning', '299 - "Deprecated: server-side scan processing moved to the client (MantaPageScan Studio)"');
@@ -3789,7 +3841,7 @@ const server = http.createServer(async (req, res) => {
       });
       if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }
       // The pending item is consumed once its job finishes; a multi-file archive stays until dropped.
-      if (item.kind === 'deb') setTimeout(() => { const j = driverCenter.getJob(); if (j && j.id === job.id && j.state !== 'running') driverCenter.dropPending(item.id); }, 20 * 60 * 1000).unref();
+      if (item.kind === 'deb') setTimeout(() => driverCenter.dropPending(item.id), 20 * 60 * 1000).unref();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
       return;
@@ -4222,8 +4274,8 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // Allow specifying mock scanner profile for appliance test suite
-      if (parsed.mock && typeof parsed.mock === 'string') {
+      // Allow specifying mock scanner profile only for authenticated admin or test runner
+      if (parsed.mock && typeof parsed.mock === 'string' && (isAdminAuthenticated(req) || process.env.MANTAPRINT_ALLOW_MOCK === '1')) {
         const p = SCANNER_PROFILES.find(x => x.id === parsed.mock || x.model.toLowerCase().includes(parsed.mock.toLowerCase()));
         if (p) {
           sc = {
@@ -4249,7 +4301,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const isMockMode = Boolean(parsed.mock || sc.device_id?.includes(':mock:'));
+      const isMockMode = Boolean(sc.device_id?.includes(':mock:'));
       if (!sc.connected && !isMockMode) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, message: 'Tidak ada scanner yang terhubung.' }));
@@ -4273,10 +4325,12 @@ const server = http.createServer(async (req, res) => {
       // F4 / Folio: 215mm x 330mm, ID Card: 86mm x 54mm, A4: 210mm x 297mm
       let width = 210;
       let height = 297;
-      const requestedPaper = parsed.paperSize || parsed.paper_size;
-      if (requestedPaper && SCAN_PAPER_SIZES[requestedPaper]) {
-        width = SCAN_PAPER_SIZES[requestedPaper].width;
-        height = SCAN_PAPER_SIZES[requestedPaper].height;
+      const rawPaper = String(parsed.paperSize || parsed.paper_size || '');
+      const hasKnownPaper = Object.prototype.hasOwnProperty.call(SCAN_PAPER_SIZES, rawPaper);
+      const requestedPaper = hasKnownPaper ? rawPaper : '';
+      if (hasKnownPaper) {
+        width = SCAN_PAPER_SIZES[rawPaper].width;
+        height = SCAN_PAPER_SIZES[rawPaper].height;
       } else if (parsed.width && parsed.height) {
         const w = Number(parsed.width);
         const h = Number(parsed.height);
@@ -4321,19 +4375,23 @@ const server = http.createServer(async (req, res) => {
         // Appliance Simulation Engine for test verification without physical USB scanner
         const p1Name = `${scanId}_p1.jpg`;
         const p1Path = path.join(SCAN_STORAGE_DIR, p1Name);
-        const pxW = Math.round((width / 25.4) * resolution);
-        const pxH = Math.round((height / 25.4) * resolution);
+        const pxW = Math.max(64, Math.min(3600, Math.round((width / 25.4) * resolution)));
+        const pxH = Math.max(64, Math.min(4800, Math.round((height / 25.4) * resolution)));
+        const paperLabel = requestedPaper || 'A4';
 
-        // Generate Page 1 (valid document with content)
-        await runCmd('/usr/bin/python3', ['-c', `
-from PIL import Image, ImageDraw
-im = Image.new('RGB', (${pxW}, ${pxH}), (252, 252, 250))
-d = ImageDraw.Draw(im)
-d.rectangle([(20, 20), (${pxW}-20, ${pxH}-20)], outline=(120, 120, 120), width=2)
-d.text((50, 50), 'MantaPrint Scan Document [${source}] [${requestedPaper || "A4"}]', fill=(20, 20, 20))
-d.text((50, 80), 'Resolution: ${resolution} DPI | Dim: ${width}x${height} mm', fill=(40, 40, 40))
-im.save('${p1Path}', 'JPEG', quality=90)
-`]);
+        // Generate Page 1 (valid document with content) using argv instead of string interpolation
+        await runCmd('/usr/bin/python3', [
+          '-c',
+          'import sys; from PIL import Image, ImageDraw; w, h = int(sys.argv[1]), int(sys.argv[2]); im = Image.new("RGB", (w, h), (252, 252, 250)); d = ImageDraw.Draw(im); d.rectangle([(20, 20), (w - 20, h - 20)], outline=(120, 120, 120), width=2); d.text((50, 50), f"MantaPrint Scan Document [{sys.argv[3]}] [{sys.argv[4]}]", fill=(20, 20, 20)); d.text((50, 80), f"Resolution: {sys.argv[5]} DPI | Dim: {sys.argv[6]}x{sys.argv[7]} mm", fill=(40, 40, 40)); im.save(sys.argv[8], "JPEG", quality=90)',
+          String(pxW),
+          String(pxH),
+          source,
+          paperLabel,
+          String(resolution),
+          String(width),
+          String(height),
+          p1Path
+        ]);
 
         let generatedFiles = [p1Path];
 
@@ -4341,11 +4399,13 @@ im.save('${p1Path}', 'JPEG', quality=90)
         if (source === 'ADF Duplex') {
           const p2Name = `${scanId}_p2.jpg`;
           const p2Path = path.join(SCAN_STORAGE_DIR, p2Name);
-          await runCmd('/usr/bin/python3', ['-c', `
-from PIL import Image
-im = Image.new('RGB', (${pxW}, ${pxH}), (250, 250, 248))
-im.save('${p2Path}', 'JPEG', quality=90)
-`]);
+          await runCmd('/usr/bin/python3', [
+            '-c',
+            'import sys; from PIL import Image; im = Image.new("RGB", (int(sys.argv[1]), int(sys.argv[2])), (250, 250, 248)); im.save(sys.argv[3], "JPEG", quality=90)',
+            String(pxW),
+            String(pxH),
+            p2Path
+          ]);
           generatedFiles.push(p2Path);
 
           // Backend Blank Page Detection: Inspect back side (p2)
@@ -4862,6 +4922,11 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
     // Ephemeral Scan Session Manual Wipe
     if (pathname === '/api/scanner/wipe-session' && req.method === 'POST') {
+      if (!isAdminOrLocal(req)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
+        return;
+      }
       let count = 0;
       try {
         const targetDirs = [RAM_SCANS_DIR, SD_SCANS_DIR, '/tmp'];
@@ -4871,7 +4936,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
           for (const f of files) {
             if (isScanArtifact(f)) {
               try {
-                fs.unlinkSync(path.join(dir, f));
+                secureShredFile(path.join(dir, f));
                 count++;
               } catch {}
             }
@@ -4972,7 +5037,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       // Generate custom HeykPrint test page PDF
-      const pdfPath = `/tmp/mantaprint_testpage_${queue}.pdf`;
+      const pdfPath = `/tmp/mantaprint_testpage_${queue}_${process.pid}_${Date.now()}.pdf`;
       const displayName = cachedStatus?.printer?.display_name || queue.replace(/_/g, ' ');
 
       const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
@@ -4989,8 +5054,13 @@ im.save('${p2Path}', 'JPEG', quality=90)
         }
       }
 
-      const printFile = fs.existsSync(pdfPath) ? pdfPath : '/usr/share/cups/data/testprint';
+      const hasGeneratedPdf = fs.existsSync(pdfPath);
+      const printFile = hasGeneratedPdf ? pdfPath : '/usr/share/cups/data/testprint';
+      const fileSize = fs.existsSync(printFile) ? fs.statSync(printFile).size : 0;
       const cmdRes = await runCmd('lp', ['-d', queue, '-o', 'fit-to-page', '-o', 'PageSize=A4', printFile]);
+      if (hasGeneratedPdf) {
+        try { fs.unlinkSync(pdfPath); } catch {}
+      }
       const success = cmdRes.code === 0;
 
       if (!success) {
@@ -5012,7 +5082,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
         printer: queue,
         title: 'Halaman Uji Coba MantaPrint',
         user: req.socket.remoteAddress || 'client',
-        size: fs.existsSync(printFile) ? fs.statSync(printFile).size : 0
+        size: fileSize
       });
 
       const shouldWait = url.searchParams.get('wait') === 'true' ||
@@ -5062,7 +5132,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
     if ((pathname === '/api/printer/test-page/preview' || pathname === '/api/printer/test-page/pdf') && (req.method === 'GET' || req.method === 'HEAD')) {
       const queue = resolveTargetQueue() || 'Canon_LBP6030_6040_6018L';
       const displayName = cachedStatus?.printer?.display_name || queue.replace(/_/g, ' ');
-      const pdfPath = `/tmp/mantaprint_testpage_${queue}.pdf`;
+      const pdfPath = `/tmp/mantaprint_testpage_${queue}_${process.pid}_${Date.now()}.pdf`;
 
       const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
         ? '/opt/mantaprint/test_page_generator.py'
@@ -5079,11 +5149,23 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       if (fs.existsSync(pdfPath)) {
-        await streamFileResponse(req, res, pdfPath, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': 'inline; filename="mantaprint-test-page.pdf"',
-          'Cache-Control': 'no-cache'
-        });
+        await streamFileResponse(
+          req,
+          res,
+          pdfPath,
+          {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'inline; filename="mantaprint-test-page.pdf"',
+            'Cache-Control': 'no-cache'
+          },
+          {
+            onComplete: () => {
+              try {
+                if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+              } catch {}
+            }
+          }
+        );
       } else {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Test page could not be generated' }));
@@ -6387,8 +6469,8 @@ im.save('${p2Path}', 'JPEG', quality=90)
           lpArgs.push('-o', `sides=${rawDuplex}`);
         }
 
-        const rawPageRanges = (req.headers['x-print-page-ranges'] || url.searchParams.get('page_ranges') || '').trim();
-        if (/^[\d,-]+$/.test(rawPageRanges)) {
+        const rawPageRanges = (req.headers['x-print-page-ranges'] || url.searchParams.get('page_ranges') || '').replace(/\s+/g, '');
+        if (/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(rawPageRanges)) {
           lpArgs.push('-o', `page-ranges=${rawPageRanges}`);
         }
 
@@ -6840,46 +6922,53 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       // Remote IR Mapping Wizard routes
-      if (subPath === 'remote/wizard/start' && req.method === 'POST') {
-        const result = await remoteWizardEngine.start();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+      if (subPath.startsWith('remote/wizard/')) {
+        if (!isAdminOrLocal(req)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized', message: 'Akses ditolak. Membutuhkan autentikasi administrator.' }));
+          return;
+        }
+        if (subPath === 'remote/wizard/start' && req.method === 'POST') {
+          const result = await remoteWizardEngine.start();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/status' && req.method === 'GET') {
-        const result = remoteWizardEngine.getStatus();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/status' && req.method === 'GET') {
+          const result = remoteWizardEngine.getStatus();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/undo' && req.method === 'POST') {
-        const result = await remoteWizardEngine.undo();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/undo' && req.method === 'POST') {
+          const result = await remoteWizardEngine.undo();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/reset' && req.method === 'POST') {
-        const result = await remoteWizardEngine.reset();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/reset' && req.method === 'POST') {
+          const result = await remoteWizardEngine.reset();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/skip' && req.method === 'POST') {
-        const result = await remoteWizardEngine.skip();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/skip' && req.method === 'POST') {
+          const result = await remoteWizardEngine.skip();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/cancel' && req.method === 'POST') {
-        remoteWizardEngine.stop();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Wizard dibatalkan' }));
-        return;
+        if (subPath === 'remote/wizard/cancel' && req.method === 'POST') {
+          remoteWizardEngine.stop();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'Wizard dibatalkan' }));
+          return;
+        }
       }
     }
 

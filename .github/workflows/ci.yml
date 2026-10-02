@@ -25,9 +25,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run unit tests (documentProcessor)
-        working-directory: frontend
+      - name: Run unit tests (frontend & backend)
         run: npm test
+
+      - name: Verify version sync and backend syntax
+        run: npm run lint
 
       - name: Verify frontend build
         working-directory: frontend

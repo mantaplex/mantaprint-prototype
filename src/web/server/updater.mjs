@@ -88,6 +88,7 @@ const UPDATER_I18N = {
     checkFailed: p => `Gagal memeriksa pembaruan: ${p.error}`,
     updaterBusy: p => `Updater sedang sibuk pada status: ${p.state}`,
     preflightStart: () => '[Pre-flight] Memverifikasi kelayakan dan status aman sistem...',
+    preflightError: p => `[Pre-flight] Pra-pemeriksaan gagal: ${p.error}`,
     preflightSpoolerBusy: () => '[Pre-flight] Peringatan: Antrean cetak memiliki tugas aktif. Menunggu spooler selesai...',
     preflightSpoolerFail: p => `Antrean pencetak memiliki ${p.count} tugas aktif. Harap tunggu hingga selesai atau batalkan tugas sebelum memperbarui.`,
     preflightStorageFail: () => 'Ruang penyimpanan tidak mencukupi pada /mnt/data. Memerlukan minimal 150MB.',
@@ -149,6 +150,7 @@ const UPDATER_I18N = {
     checkFailed: p => `Failed to check for updates: ${p.error}`,
     updaterBusy: p => `Updater is currently busy with state: ${p.state}`,
     preflightStart: () => '[Pre-flight] Verifying system readiness and safety preconditions...',
+    preflightError: p => `[Pre-flight] Preflight check failed: ${p.error}`,
     preflightSpoolerBusy: () => '[Pre-flight] Warning: Print queue has active jobs. Waiting for spooler to clear...',
     preflightSpoolerFail: p => `Print queue has ${p.count} active jobs. Please wait for print jobs to complete or cancel them before updating.`,
     preflightStorageFail: () => 'Insufficient storage space on /mnt/data. At least 150MB required.',
@@ -302,21 +304,12 @@ export class ApplianceUpdater extends EventEmitter {
   }
 
   compareSemver(v1, v2) {
-    if (!v1 || !v2) return 0;
-    const clean = (v) => v.replace(/^v/, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
-    const [p1, p2] = [clean(v1), clean(v2)];
-    for (let i = 0; i < 3; i++) {
-      const a = p1[i] || 0;
-      const b = p2[i] || 0;
-      if (a > b) return 1;
-      if (a < b) return -1;
-    }
-    return 0;
+    return compareSemver(v1, v2);
   }
 
   // 1. Check for remote updates (Multi-Tier Query)
   async checkForUpdates(force = false) {
-    if (this.state !== UpdaterState.IDLE && this.state !== UpdaterState.UPDATE_AVAILABLE) {
+    if (![UpdaterState.IDLE, UpdaterState.UPDATE_AVAILABLE, UpdaterState.COMPLETED, UpdaterState.FAILED].includes(this.state)) {
       return {
         state: this.state,
         current_version: this.currentVersion,
@@ -466,9 +459,18 @@ export class ApplianceUpdater extends EventEmitter {
 
     // B. Check storage space
     try {
-      const { stdout } = await execFileAsync('df', ['-m', '/opt', '/mnt/data']).catch(() => ({ stdout: '' }));
+      const checkDir = fs.existsSync('/mnt/data') ? '/mnt/data' : '/';
+      const st = fs.statfsSync(checkDir);
+      const availMb = (Number(st.bavail) * Number(st.bsize)) / (1024 * 1024);
+      if (availMb > 0 && availMb < 150) {
+        const errorMsg = this.t('preflightStorageFail');
+        this.appendLog('ERROR', this.t('preflightError', { error: errorMsg }));
+        throw new Error(errorMsg);
+      }
       this.appendLog('INFO', this.t('preflightStorageOk'));
-    } catch {}
+    } catch (err) {
+      if (err.message.includes('150MB')) throw err;
+    }
 
     this.appendLog('SUCCESS', this.t('preflightPassed'));
   }
@@ -542,7 +544,7 @@ export class ApplianceUpdater extends EventEmitter {
 
   // 4. Start Full Update Job
   async startUpdate({ backup = true } = {}) {
-    if (this.state !== UpdaterState.IDLE && this.state !== UpdaterState.UPDATE_AVAILABLE) {
+    if (![UpdaterState.IDLE, UpdaterState.UPDATE_AVAILABLE, UpdaterState.COMPLETED, UpdaterState.FAILED].includes(this.state)) {
       throw new Error(this.t('updaterBusy', { state: this.state }));
     }
 
@@ -746,29 +748,33 @@ export class ApplianceUpdater extends EventEmitter {
 
   // 6. Rollback
   async rollbackToSnapshot(snapshotId) {
-    if (this.state !== UpdaterState.IDLE && this.state !== UpdaterState.FAILED) {
+    if (![UpdaterState.IDLE, UpdaterState.UPDATE_AVAILABLE, UpdaterState.COMPLETED, UpdaterState.FAILED].includes(this.state)) {
       throw new Error(this.t('rollbackBusy', { state: this.state }));
     }
 
+    const cleanId = String(snapshotId || '').trim();
+    if (!/^snapshot-[A-Za-z0-9._-]+$/.test(cleanId) || cleanId.includes('..')) {
+      throw new Error(this.t('rollbackNotFound', { name: cleanId || '(empty)' }));
+    }
+
     this.setState(UpdaterState.ROLLING_BACK, 20, 'phaseRollingBack');
-    this.appendLog('WARN', this.t('rollbackStart', { name: snapshotId }));
+    this.appendLog('WARN', this.t('rollbackStart', { name: cleanId }));
 
     let targetDir = null;
-    const candidates = [
-      path.join('/mnt/data/backups', snapshotId),
-      path.join('/var/backups/mantaprint', snapshotId)
-    ];
+    const roots = ['/mnt/data/backups', '/var/backups/mantaprint'];
 
-    for (const c of candidates) {
-      if (fs.existsSync(c)) {
-        targetDir = c;
+    for (const root of roots) {
+      const resolvedRoot = path.resolve(root);
+      const candidate = path.resolve(resolvedRoot, cleanId);
+      if (candidate.startsWith(resolvedRoot + path.sep) && fs.existsSync(candidate)) {
+        targetDir = candidate;
         break;
       }
     }
 
     if (!targetDir) {
       this.setState(UpdaterState.FAILED, 0, '');
-      throw new Error(this.t('rollbackNotFound', { name: snapshotId }));
+      throw new Error(this.t('rollbackNotFound', { name: cleanId }));
     }
 
     try {

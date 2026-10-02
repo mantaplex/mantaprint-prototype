@@ -34,8 +34,13 @@ export default function Stage({ page, cropMode, cropDraft, onCropDraft, compareO
   // Decode the page blob once per page
   useEffect(() => {
     let cancelled = false;
-    if (!page) { bitmapRef.current = { id: null, bmp: null }; setFrame({ width: 0, height: 0 }); return; }
-    if (bitmapRef.current.id === page.id) return;
+    if (!page) {
+      bitmapRef.current.bmp?.close?.();
+      bitmapRef.current = { id: null, bmp: null };
+      setFrame({ width: 0, height: 0 });
+      return undefined;
+    }
+    if (bitmapRef.current.id === page.id) return undefined;
     (async () => {
       try {
         const bmp = await decodeBlob(page.blob);
@@ -50,6 +55,11 @@ export default function Stage({ page, cropMode, cropDraft, onCropDraft, compareO
     })();
     return () => { cancelled = true; };
   }, [page]);
+
+  useEffect(() => () => {
+    bitmapRef.current.bmp?.close?.();
+    bitmapRef.current = { id: null, bmp: null };
+  }, []);
 
   // Render whenever the edits (or page bitmap) change
   useEffect(() => {

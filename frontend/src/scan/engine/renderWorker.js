@@ -52,7 +52,7 @@ async function ktp2in1({ front, back, dpi, autoDetect }) {
     try {
       const canvas = renderToCanvas(bitmap, side.edits, { canvasFactory: offscreenCanvasFactory, maxDim: 2600 });
       let img = canvasImageData(canvas);
-      if (autoDetect) {
+      if (autoDetect && !side.edits?.crop) {
         const contour = detectCardContour(img);
         if (contour && contour.confidence >= 0.35 && contour.width > 40 && contour.height > 25) {
           img = cropImageBuffer(img, contour);

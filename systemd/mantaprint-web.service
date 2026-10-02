@@ -7,13 +7,16 @@ Wants=cups.service avahi-daemon.service
 Type=simple
 User=root
 WorkingDirectory=/opt/mantaprint/web
-ExecStart=/usr/bin/node --expose-gc --max-old-space-size=64 --max-semi-space-size=2 /opt/mantaprint/web/server/server.mjs
+ExecStart=/usr/bin/node --expose-gc --max-old-space-size=128 --max-semi-space-size=4 /opt/mantaprint/web/server/server.mjs
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
 Environment=PORT=80
-MemoryHigh=150M
-MemoryMax=200M
+Nice=-5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=2
+MemoryHigh=180M
+MemoryMax=256M
 LimitNOFILE=16384
 NoNewPrivileges=yes
 

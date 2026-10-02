@@ -22,6 +22,12 @@ export async function adminFetch(url, { method = 'GET', body, headers = {} } = {
   });
   let json = null;
   try { json = await res.json(); } catch {}
+  if (res.status === 401) {
+    try { localStorage.removeItem(ADMIN_TOKEN_KEY); } catch {}
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('mantaprint:unauthorized'));
+    }
+  }
   if (!res.ok || (json && json.success === false)) {
     const err = new Error(json?.message || `Request failed (${res.status})`);
     err.status = res.status;
@@ -29,6 +35,36 @@ export async function adminFetch(url, { method = 'GET', body, headers = {} } = {
     throw err;
   }
   return json || {};
+}
+
+/**
+ * Copies text to the clipboard with an HTTP (non-secure context) fallback
+ * for LAN appliance access (e.g. http://192.168.x.x).
+ */
+export async function copyTextToClipboard(text) {
+  const value = String(text ?? '');
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {}
+  }
+  if (typeof document !== 'undefined') {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return Boolean(ok);
+    } catch {}
+  }
+  return false;
 }
 
 // ---- Jobs submitted from this browser -------------------------------------------------

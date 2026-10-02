@@ -78,7 +78,11 @@ export function findModelEntry(models, product) {
   if (models[name]) return { section: name, ...models[name] };
   let best = null;
   for (const key of Object.keys(models)) {
-    if (name.startsWith(key) && (!best || key.length > best.length)) best = key;
+    if (name.startsWith(key) && (!best || key.length > best.length)) {
+      const rest = name.slice(key.length);
+      if (/\d$/.test(key) && /^\d/.test(rest)) continue;
+      best = key;
+    }
   }
   return best ? { section: best, ...models[best] } : null;
 }

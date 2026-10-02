@@ -3,6 +3,7 @@ import { RefreshCw, Download, Loader2, History, Copy, Check, AlertTriangle } fro
 import { useI18n } from '../../i18n/I18nContext.jsx';
 import { PageHeader, Card, StatusPill, Button, Disclosure, Modal, Meter, formatBytes, formatDate } from '../../ui/index.js';
 import { useApplianceUpdater } from '../../hooks/useApplianceUpdater.js';
+import { copyTextToClipboard } from '../../shell/api.js';
 
 const STEPS = ['PREFLIGHT', 'BACKING_UP', 'DOWNLOADING', 'INSTALLING', 'RESTARTING', 'VERIFYING'];
 const BUSY_STATES = new Set([...STEPS, 'CHECKING']);
@@ -38,9 +39,12 @@ export default function Updates({ showToast }) {
     }
   };
 
-  const copyLogs = () => {
+  const copyLogs = async () => {
     const raw = u.logs.map((l) => `[${l.timestamp}] [${(l.level || 'info').toUpperCase()}] ${l.message}`).join('\n');
-    try { navigator.clipboard.writeText(raw); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+    if (await copyTextToClipboard(raw)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
   };
 
   return (

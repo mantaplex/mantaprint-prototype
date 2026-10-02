@@ -2124,10 +2124,34 @@ _last_sync_result = []
 def sync_all_printers():
     """
     Synchronizes physical USB printers with CUPS queues and Avahi advertisements.
-    Thread-safe; safe to invoke from udev events or HTTP endpoints concurrently.
+    Thread-safe and inter-process safe; safe to invoke from udev events or HTTP endpoints concurrently.
     """
     global _last_sync_time, _last_sync_result
     with _lock:
+        import fcntl
+        lock_fd = None
+        try:
+            lock_path = "/run/mantaprint-printer-sync.lock" if os.path.isdir("/run") else "/tmp/mantaprint-printer-sync.lock"
+            lock_fd = open(lock_path, "w")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except Exception:
+            pass
+        try:
+            return _sync_all_printers_locked()
+        finally:
+            if lock_fd is not None:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                except Exception:
+                    pass
+                try:
+                    lock_fd.close()
+                except Exception:
+                    pass
+
+def _sync_all_printers_locked():
+    global _last_sync_time, _last_sync_result
+    if True:
         now = time.time()
         # Debounce burst events within 1.5 seconds to ensure idempotency and prevent thrashing
         if (now - _last_sync_time < 1.5) and _last_sync_result is not None:
@@ -2135,8 +2159,8 @@ def sync_all_printers():
 
         # Self-healing: verify Avahi mDNS daemon is active, restart if dead
         _, avahi_st, _ = exec_cmd(["systemctl", "is-active", "avahi-daemon"])
-        if avahi_st != "active":
-            print("[!] Avahi daemon is inactive or crashed. Restarting avahi-daemon...")
+        if avahi_st == "failed":
+            print("[!] Avahi daemon is in failed state. Restarting avahi-daemon...")
             exec_cmd(["systemctl", "restart", "avahi-daemon"])
 
         # Silence CUPS native raw DNS-SD to prevent duplicate "@ host" Generic PostScript broadcasts

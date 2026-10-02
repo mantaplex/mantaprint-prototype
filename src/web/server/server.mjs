@@ -27,7 +27,7 @@ import { hdmiNetworkEngine, remoteWizardEngine, validateEthernetConfig, applySys
 import { INSTALLED_VERSION } from './version.mjs';
 import { buildAirPrintProfile } from './airprint-profile.mjs';
 import { runComprehensiveMdnsCupsDiagnostic, getQuickMdnsStatus } from './network-diagnostics.mjs';
-import { configManager } from './config-manager.mjs';
+import { configManager, redactConfigForClient } from './config-manager.mjs';
 import { applianceUpdater, UpdaterState } from './updater.mjs';
 import { scannerHardwareLock, scannerPairingManager } from './scanner-pairing-manager.mjs';
 import { getFirmwareStatus, getExtractionTools, pickWorkBase, freeBytes, receiveUpload, processFirmwareUpload } from './scanner-firmware.mjs';
@@ -7188,13 +7188,18 @@ im.save('${p2Path}', 'JPEG', quality=90)
     if (pathname.startsWith('/api/system/')) {
       const sub = pathname.replace('/api/system/', '');
 
-      // 1. Get full system settings & time status
+      // 1. Get full system settings & time status (Admin Only, redacted)
       if (sub === 'settings' && req.method === 'GET') {
+        if (!isAdminAuthenticated(req)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Autentikasi admin diperlukan.' }));
+          return;
+        }
         const timeStatus = await configManager.getTimeStatus();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           success: true,
-          settings: configManager.getConfig(),
+          settings: redactConfigForClient(configManager.getConfig()),
           time_status: timeStatus
         }));
         return;

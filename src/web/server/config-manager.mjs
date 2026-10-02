@@ -43,6 +43,24 @@ const DEFAULT_CONFIG = {
   }
 };
 
+/**
+ * Returns a copy of a hub configuration object safe to send to authenticated
+ * clients (admin UI), omitting credentials, tokens, PIN hashes, and secrets.
+ */
+export function redactConfigForClient(cfg) {
+  if (!cfg || typeof cfg !== 'object') return {};
+  const {
+    admin: _admin,
+    lockdown: _lockdown,
+    lockdown_override: _lockdownOverride,
+    secret: _secret,
+    token: _token,
+    password: _password,
+    ...rest
+  } = cfg;
+  return structuredClone(rest);
+}
+
 class ConfigManager {
   constructor() {
     this.configPath = this.resolveConfigPath();
@@ -50,6 +68,13 @@ class ConfigManager {
   }
 
   resolveConfigPath() {
+    if (process.env.MANTAPRINT_STATE_DIR) {
+      const stateDir = path.resolve(process.env.MANTAPRINT_STATE_DIR);
+      if (!fs.existsSync(stateDir)) {
+        fs.mkdirSync(stateDir, { recursive: true, mode: 0o755 });
+      }
+      return path.join(stateDir, 'config.json');
+    }
     try {
       if (!fs.existsSync('/etc/mantaprint')) {
         fs.mkdirSync('/etc/mantaprint', { recursive: true, mode: 0o755 });
@@ -100,6 +125,10 @@ class ConfigManager {
 
   getConfig() {
     return this.cachedConfig || { ...DEFAULT_CONFIG };
+  }
+
+  getRedactedConfig() {
+    return redactConfigForClient(this.getConfig());
   }
 
   get(key, defaultValue = null) {

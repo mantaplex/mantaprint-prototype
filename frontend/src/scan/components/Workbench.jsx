@@ -302,13 +302,17 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
     if (!activeId) return;
     const record = !dragRecorded.current;
     dragRecorded.current = false;
-    if (Object.keys(patch).length) studio.updateEdits(activeId, patch, { record: true });
+    if (Object.keys(patch).length) studio.updateEdits(activeId, patch, { record });
     else if (record) studio.updateEdits(activeId, {}, { record: false });
   };
   const applyToneToAll = () => {
     if (!activePage) return;
     const { filter, bgClean, contrast, brightness } = activePage.edits;
-    for (const p of pages) if (p.id !== activeId) studio.updateEdits(p.id, { filter, bgClean, contrast, brightness }, { record: p === pages[0] });
+    const targets = pages.filter((p) => p.id !== activeId);
+    if (targets.length) {
+      studio.beginChange();
+      for (const p of targets) studio.updateEdits(p.id, { filter, bgClean, contrast, brightness }, { record: false });
+    }
     showToast?.(t('studio.toasts.appliedAll'), 'success');
   };
 

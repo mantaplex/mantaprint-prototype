@@ -96,18 +96,22 @@ function tx(storeNames, mode, fn) {
   return openDb().then((db) => new Promise((resolve, reject) => {
     const t = db.transaction(storeNames, mode);
     let result;
+    const abortAndReject = (err) => {
+      try { t.abort(); } catch {}
+      reject(err);
+    };
     t.oncomplete = () => resolve(result);
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error || new Error('Transaction aborted'));
     try {
       const maybe = fn(t);
       if (maybe && typeof maybe.then === 'function') {
-        maybe.then((r) => { result = r; }).catch(reject);
+        maybe.then((r) => { result = r; }).catch(abortAndReject);
       } else {
         result = maybe;
       }
     } catch (err) {
-      reject(err);
+      abortAndReject(err);
     }
   }));
 }
@@ -369,17 +373,56 @@ async function touchDocument(docId) {
   });
 }
 
-/** Keeps the document cover in sync with its first page thumbnail. */
+/** Keeps the document cover in sync with its first page thumbnail atomically. */
 export async function refreshCover(docId) {
-  const doc = await getDocument(docId);
-  if (!doc) return;
-  const firstId = doc.pageIds[0];
-  const first = firstId ? await getPage(firstId) : null;
-  const cover = first?.thumb || null;
-  if (cover !== doc.cover) {
-    await tx(STORE_DOCS, 'readwrite', (t) => t.objectStore(STORE_DOCS).put({ ...doc, cover }));
-    notify({ type: 'document', id: docId });
+  const changed = await tx([STORE_DOCS, STORE_PAGES], 'readwrite', async (t) => {
+    const docs = t.objectStore(STORE_DOCS);
+    const doc = await reqToPromise(docs.get(docId));
+    if (!doc) return false;
+    const firstId = doc.pageIds[0];
+    const first = firstId ? await reqToPromise(t.objectStore(STORE_PAGES).get(firstId)) : null;
+    const cover = first?.thumb || null;
+    if (cover === doc.cover) return false;
+    docs.put({ ...doc, cover });
+    return true;
+  });
+  if (changed) notify({ type: 'document', id: docId });
+}
+
+/** Atomically deletes pages belonging to docId that are no longer in doc.pageIds. */
+export async function purgeOrphanPages(docId) {
+  const purged = await tx([STORE_DOCS, STORE_PAGES], 'readwrite', async (t) => {
+    const docs = t.objectStore(STORE_DOCS);
+    const doc = await reqToPromise(docs.get(docId));
+    if (!doc) return 0;
+    const keep = new Set(doc.pageIds || []);
+    const pagesStore = t.objectStore(STORE_PAGES);
+    const allPages = await reqToPromise(pagesStore.index('docId').getAll(docId));
+    let removedCount = 0;
+    let keptBytes = 0;
+    for (const p of allPages) {
+      if (!keep.has(p.id)) {
+        pagesStore.delete(p.id);
+        removedCount += 1;
+      } else {
+        keptBytes += p.blob?.size || 0;
+      }
+    }
+    if (removedCount > 0) {
+      docs.put({
+        ...doc,
+        pageCount: doc.pageIds.length,
+        sizeBytes: keptBytes,
+        updatedAt: Date.now()
+      });
+    }
+    return removedCount;
+  });
+  if (purged > 0) {
+    await refreshCover(docId);
+    notify({ type: 'page', docId });
   }
+  return purged;
 }
 
 // ---------------------------------------------------------------------------

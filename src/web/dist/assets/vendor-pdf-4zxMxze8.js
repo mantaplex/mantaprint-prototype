@@ -1,4 +1,4 @@
-import{g as os}from"./vendor-lucide-fZqIYcGJ.js";/*! *****************************************************************************
+import{g as os}from"./vendor-lucide-Cujaxc7U.js";/*! *****************************************************************************
 Copyright (c) Microsoft Corporation.
 
 Permission to use, copy, modify, and/or distribute this software for any

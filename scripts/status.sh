@@ -28,7 +28,7 @@ df -h / /mnt/data /var/log 2>/dev/null || df -h /
 
 echo ""
 echo "--- [3] MANTAPRINT SYSTEMD SERVICES ---"
-  for svc in mantaprint-web mantaprint-agent mantaprint-storage-init mantaprint-ir mantaprint-tui mantaprint-hdmi mantaprint-hotplug cups avahi-daemon; do
+  for svc in mantaprint-web mantaprint-storage-init mantaprint-ir mantaprint-tui mantaprint-hdmi mantaprint-hotplug cups avahi-daemon; do
     printf "%-30s : %s\n" "$svc" "$(systemctl is-active $svc 2>/dev/null || echo 'inactive')"
   done
 

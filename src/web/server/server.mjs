@@ -29,7 +29,7 @@ import { buildAirPrintProfile } from './airprint-profile.mjs';
 import { runComprehensiveMdnsCupsDiagnostic, getQuickMdnsStatus } from './network-diagnostics.mjs';
 import { configManager, redactConfigForClient } from './config-manager.mjs';
 import { applianceUpdater, UpdaterState } from './updater.mjs';
-import { scannerHardwareLock, scannerPairingManager } from './scanner-pairing-manager.mjs';
+import { scannerHardwareLock } from './scanner-pairing-manager.mjs';
 import { getFirmwareStatus, getExtractionTools, pickWorkBase, freeBytes, receiveUpload, processFirmwareUpload } from './scanner-firmware.mjs';
 import { getHplipPluginStatus, hpPluginHint, installPluginFile, RUN_MAX_BYTES as HPLIP_RUN_MAX_BYTES, parseModelsDat as parseHplipModels, findModelEntry as findHplipModel, pluginNeed as hplipPluginNeed, MODELS_DAT as HPLIP_MODELS_DAT } from './hplip-plugin.mjs';
 import * as driverCenter from './driver-center.mjs';
@@ -756,11 +756,19 @@ function matchScannerProfile(model, vendor, devId) {
   return null;
 }
 
+function resolveImageProcessorPath() {
+  if (fs.existsSync('/opt/mantaprint/core/image_processor.py')) {
+    return '/opt/mantaprint/core/image_processor.py';
+  }
+  if (fs.existsSync('/opt/mantaprint/image_processor.py')) {
+    return '/opt/mantaprint/image_processor.py';
+  }
+  return path.resolve(__dirname, '../../core/image_processor.py');
+}
+
 // Blank Page Detection Helper (calls image_processor.py detect-blank)
 async function checkBlankPage(imagePath) {
-  const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-    ? '/opt/mantaprint/image_processor.py'
-    : path.resolve(__dirname, '../image_processor.py');
+  const procPath = resolveImageProcessorPath();
 
   const res = await runCmd('/usr/bin/python3', [
     procPath,
@@ -2789,7 +2797,6 @@ async function probePrinterTelemetry() {
     },
     lockdown: lockdownSummary(),
     scanner_portal_enabled: configManager.getConfig()?.scanner?.portal_enabled !== false,
-    scanner_pwa_api_enabled: configManager.getConfig()?.scanner?.remote_pwa_api_enabled !== false,
     queues
   };
 
@@ -3529,196 +3536,36 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ==========================================
-    // SCANNER PWA PAIRING, CLIENTS & MUTEX API
+    // SCANNER DISCOVERY & DEPRECATED PWA PAIRING ROUTES
     // ==========================================
 
-    // 1. Scanner Subnet Discovery & Probe (Zero-auth for fast subnet sweep)
     if (pathname === '/api/scanner/probe' && req.method === 'GET') {
       const cfg = configManager.getConfig();
       const status = scannerHardwareLock.getStatus();
       const networkIp = getIpAddress();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        hub_uuid: scannerPairingManager.getHubUuid(),
         hostname: os.hostname(),
         ip: networkIp || '127.0.0.1',
         version: getCurrentSystemVersion(),
         portal_enabled: cfg?.scanner?.portal_enabled !== false,
-        pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false,
         is_busy: status.is_busy,
-        busy_holder: status.is_busy ? (status.holder || 'Perangkat terhubung') : null
+        busy_holder: status.is_busy ? (status.holder || 'Sesi aktif') : null
       }));
       return;
     }
 
-    // 2. Generate Ephemeral Pairing Code (Admin Only)
-    if (pathname === '/api/scanner/pairing/generate' && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const hostHeader = req.headers.host || 'mantaprint.local';
-      const [hostName, hostPort] = hostHeader.split(':');
-      const networkIp = getIpAddress();
-      const code = scannerPairingManager.generatePairingCode(
-        hostName.includes('.local') ? hostName : 'mantaprint.local',
-        networkIp || '127.0.0.1',
-        parseInt(hostPort || '80', 10)
-      );
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, ...code }));
-      return;
-    }
-
-    // 3. Verify Pairing Code & Issue Durable Token (PWA Client)
-    if (pathname === '/api/scanner/pairing/verify' && req.method === 'POST') {
-      const cfg = configManager.getConfig();
-      if (cfg?.scanner?.remote_pwa_api_enabled === false) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error_code: 'ERR_PWA_API_DISABLED',
-          message: 'Akses Remote Scanner PWA dinonaktifkan oleh Administrator.'
-        }));
-        return;
-      }
-
-      let raw;
-      try {
-        raw = await readBody(req);
-      } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Payload tidak valid.' }));
-        return;
-      }
-
-      const parsed = parseJsonBody(raw) || {};
-      const clientIp = req.socket?.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
-      const result = scannerPairingManager.verifyPairing(parsed.pin || parsed.pairing_token, {
-        device_name: parsed.device_name,
-        platform: parsed.platform,
-        userAgent: req.headers['user-agent'],
-        ip: clientIp
+    if (pathname.startsWith('/api/scanner/pairing') || pathname.startsWith('/api/scanner/clients')) {
+      res.writeHead(410, {
+        'Content-Type': 'application/json',
+        Deprecation: 'true'
       });
-
-      if (!result.success) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
-
-      // Broadcast SSE event to admin console that client paired
-      broadcastSse({
-        type: 'scanner:client_paired',
-        client_id: result.client_id,
-        device_name: result.device_name,
-        ip: clientIp,
-        timestamp: new Date().toISOString()
-      });
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-      return;
-    }
-
-    // 4. List Paired Clients (Admin Only)
-    if (pathname === '/api/scanner/clients' && req.method === 'GET') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const clients = scannerPairingManager.listClients();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, clients, count: clients.length }));
-      return;
-    }
-
-    // 5. Revoke Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && pathname.endsWith('/revoke') && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const ok = scannerPairingManager.revokeClient(clientId, 'admin');
-      if (ok) {
-        broadcastSse({
-          type: 'scanner:client_revoked',
-          client_id: clientId,
-          timestamp: new Date().toISOString()
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Akses perangkat berhasil dicabut.' }));
-      } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Perangkat tidak ditemukan.' }));
-      }
-      return;
-    }
-
-    // 6. Reauthorize Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && pathname.endsWith('/reauthorize') && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const ok = scannerPairingManager.reauthorizeClient(clientId);
-      if (ok) {
-        broadcastSse({
-          type: 'scanner:client_reauthorized',
-          client_id: clientId,
-          timestamp: new Date().toISOString()
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Perangkat berhasil diotorisasi ulang.' }));
-      } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Perangkat tidak ditemukan.' }));
-      }
-      return;
-    }
-
-    // 7. Rename Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && pathname.endsWith('/rename') && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const raw = await readBody(req);
-      const parsed = parseJsonBody(raw) || {};
-      const ok = scannerPairingManager.renameClient(clientId, parsed.device_name);
-      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: ok }));
-      return;
-    }
-
-    // 8. Delete Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && req.method === 'DELETE') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const ok = scannerPairingManager.deleteClient(clientId);
-      broadcastSse({
-        type: 'scanner:client_deleted',
-        client_id: clientId,
-        timestamp: new Date().toISOString()
-      });
-      res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: ok }));
+      res.end(JSON.stringify({
+        success: false,
+        deprecated: true,
+        error: 'gone',
+        message: 'Mobile Scanner PWA pairing has been deprecated. Use MantaPage Scan Studio at /scan.'
+      }));
       return;
     }
 
@@ -4132,14 +3979,13 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 10. Scanner Service Configuration (Portal & PWA API toggles)
+    // 10. Scanner Service Configuration (Scan Studio portal toggle)
     if (pathname === '/api/scanner/config' && req.method === 'GET') {
       const cfg = configManager.getConfig();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         success: true,
-        portal_enabled: cfg?.scanner?.portal_enabled !== false,
-        remote_pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false
+        portal_enabled: cfg?.scanner?.portal_enabled !== false
       }));
       return;
     }
@@ -4156,7 +4002,6 @@ const server = http.createServer(async (req, res) => {
       const updatedScannerCfg = {
         ...currentScannerCfg,
         portal_enabled: parsed.portal_enabled !== undefined ? !!parsed.portal_enabled : currentScannerCfg.portal_enabled !== false,
-        remote_pwa_api_enabled: parsed.remote_pwa_api_enabled !== undefined ? !!parsed.remote_pwa_api_enabled : currentScannerCfg.remote_pwa_api_enabled !== false,
         selected_device_id: parsed.selected_device_id !== undefined ? String(parsed.selected_device_id) : currentScannerCfg.selected_device_id
       };
       configManager.saveConfig({ scanner: updatedScannerCfg });
@@ -4192,107 +4037,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 10. Direct Zero-Footprint SANE Chunked Stream
     if (pathname === '/api/scanner/stream' && (req.method === 'GET' || req.method === 'POST')) {
-      const authHeader = req.headers['authorization'] || req.headers['x-mantaprint-token'] || url.searchParams.get('token');
-      const clientIp = req.socket?.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
-      const auth = scannerPairingManager.verifyClientToken(authHeader, clientIp);
-      if (!auth.valid && !isAdminAuthenticated(req)) {
-        res.writeHead(auth.code === 'ERR_CLIENT_REVOKED' ? 403 : 401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error_code: auth.code || 'ERR_UNAUTHORIZED',
-          message: auth.message || 'Autentikasi token diperlukan.',
-          action_required: auth.code === 'ERR_CLIENT_REVOKED' ? 'PURGE_LOCAL_CREDENTIALS' : 'REPAIR'
-        }));
-        return;
-      }
-
-      const clientName = auth?.client?.device_name || 'Stream Client';
-      const clientId = auth?.client?.client_id || 'direct';
-
-      const lock = scannerHardwareLock.acquire(clientId, clientName);
-      if (!lock.acquired) {
-        res.writeHead(423, { 
-          'Content-Type': 'application/json',
-          'Retry-After': String(lock.estimatedRemainingSec || 15)
-        });
-        res.end(JSON.stringify({
-          success: false,
-          error_code: 'SCANNER_BUSY',
-          message: lock.message,
-          holder: lock.holder,
-          elapsed_sec: lock.elapsedSec
-        }));
-        return;
-      }
-
-      const sc = await probeScannerTelemetry();
-      if (!sc.connected) {
-        scannerHardwareLock.release(clientId);
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Tidak ada scanner yang terhubung.' }));
-        return;
-      }
-
-      let resolutionNum = parseInt(url.searchParams.get('resolution') || '300', 10);
-      if (isNaN(resolutionNum) || resolutionNum < 75) resolutionNum = 150;
-      const validModes = ['Color', 'Gray', 'Lineart'];
-      const mode = validModes.includes(url.searchParams.get('mode')) ? url.searchParams.get('mode') : 'Color';
-      const maxDpi = mode === 'Color' ? 300 : 600;
-      resolutionNum = Math.min(resolutionNum, maxDpi);
-      const validFormats = ['jpeg', 'png', 'tiff', 'pnm'];
-      const format = validFormats.includes(url.searchParams.get('format')?.toLowerCase()) ? url.searchParams.get('format').toLowerCase() : 'jpeg';
-      const validSources = ['Flatbed', 'ADF Front', 'ADF Back', 'ADF Duplex'];
-      const sourceRaw = url.searchParams.get('source') || 'Flatbed';
-      const source = validSources.includes(sourceRaw) ? sourceRaw : 'Flatbed';
-
-      res.writeHead(200, {
-        'Content-Type': format === 'jpeg' ? 'image/jpeg' : 'image/x-portable-pixmap',
-        'Transfer-Encoding': 'chunked',
-        'X-Scanner-Model': sc.model || 'SANE Scanner',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Access-Control-Allow-Origin': '*'
+      res.writeHead(410, {
+        'Content-Type': 'application/json',
+        Deprecation: 'true'
       });
-
-      const args = [
-        '-d', sc.device_id,
-        `--resolution=${resolutionNum}`,
-        `--mode=${mode}`,
-        `--format=${format}`
-      ];
-      if (source && source !== 'Flatbed') {
-        args.push(`--source=${source}`);
-      }
-
-      const proc = spawn('scanimage', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-      scannerHardwareLock.registerActiveProcess(proc);
-
-      // Drain stderr to prevent pipe buffer deadlock
-      proc.stderr.resume();
-
-      proc.on('error', (err) => {
-        console.error('[ScannerStream] Failed to spawn scanimage:', err.message);
-        scannerHardwareLock.release(clientId);
-        if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Gagal menjalankan subsistem pemindai.' }));
-        }
-      });
-
-      proc.stdout.pipe(res);
-
-      req.on('close', () => {
-        if (!proc.killed) {
-          try { proc.kill('SIGTERM'); } catch {}
-          scannerHardwareLock.release(clientId);
-        }
-      });
-
-      proc.on('close', () => {
-        scannerHardwareLock.release(clientId);
-        res.end();
-      });
+      res.end(JSON.stringify({
+        success: false,
+        deprecated: true,
+        error: 'gone',
+        message: 'Mobile Scanner PWA stream has been deprecated. Use POST /api/scanner/scan from MantaPage Scan Studio (/scan).'
+      }));
       return;
     }
 
@@ -4358,7 +4113,6 @@ const server = http.createServer(async (req, res) => {
         scanners: sc?.available_devices || (sc?.connected ? [sc] : []),
         mutex: status,
         portal_enabled: cfg?.scanner?.portal_enabled !== false,
-        remote_pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false,
         paperSizes: SCAN_PAPER_SIZES,
         profiles: SCANNER_PROFILES.map(p => ({
           id: p.id,
@@ -4414,43 +4168,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Scanner Image Acquisition (WebScan & PWA Client)
+    // Scanner Image Acquisition (MantaPage Scan Studio /scan)
     if (pathname === '/api/scanner/scan' && req.method === 'POST') {
-      // Auth & Portal Permission Check
-      const tokenHeader = req.headers['authorization'] || req.headers['x-mantaprint-token'];
       const cfg = configManager.getConfig();
-      let clientInfo = null;
-
-      if (tokenHeader) {
-        const clientIp = req.socket?.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
-        const auth = scannerPairingManager.verifyClientToken(tokenHeader, clientIp);
-        if (!auth.valid) {
-          res.writeHead(auth.code === 'ERR_CLIENT_REVOKED' ? 403 : 401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: false,
-            error_code: auth.code || 'ERR_UNAUTHORIZED',
-            message: auth.message || 'Token tidak valid.',
-            action_required: auth.code === 'ERR_CLIENT_REVOKED' ? 'PURGE_LOCAL_CREDENTIALS' : 'REPAIR'
-          }));
-          return;
-        }
-        clientInfo = auth.client;
-      } else {
-        // Direct web access from /scan portal
-        if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: false,
-            error_code: 'ERR_PORTAL_DISABLED',
-            message: 'WebScan Direct Portal dinonaktifkan oleh Administrator.'
-          }));
-          return;
-        }
+      if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error_code: 'ERR_PORTAL_DISABLED',
+          message: 'WebScan Direct Portal dinonaktifkan oleh Administrator.'
+        }));
+        return;
       }
 
       // Hardware Mutex Lock
-      const lockHolderName = clientInfo?.device_name || 'WebScan Direct';
-      const lockHolderId = clientInfo?.client_id || 'direct_scan';
+      const lockHolderName = 'Scan Studio';
+      const lockHolderId = 'direct_scan';
       const lockAcquired = scannerHardwareLock.acquire(lockHolderId, lockHolderName);
       if (!lockAcquired.acquired) {
         res.writeHead(423, { 
@@ -4577,9 +4310,7 @@ const server = http.createServer(async (req, res) => {
         source = 'ADF Front';
       }
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       let blankPagesDiscarded = 0;
       let discardedPages = [];
@@ -4874,9 +4605,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const enhId = `enh_${Date.now()}_${fileId}`;
       const outPath = path.join(SCAN_STORAGE_DIR, enhId);
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       const args = [
         'enhance',
@@ -4930,9 +4659,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const validFiles = [];
       const tempFilesToClean = [];
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       for (let i = 0; i < pages.length; i++) {
         const p = pages[i];
@@ -5066,9 +4793,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const outId = `ktp2in1_${Date.now()}.${fileExt}`;
       const outPath = path.join(SCAN_STORAGE_DIR, outId);
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       const args = [
         'ktp-2in1',
@@ -5178,13 +4903,11 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const urlObj = new URL(req.url, 'http://127.0.0.1');
 
-      // Auth / Portal validation guard: Require open portal, admin auth, or valid client token
+      // Auth / Portal validation guard: Require open portal or admin auth
       const cfg = configManager.getConfig();
-      const tokenHeader = req.headers['authorization'] || req.headers['x-mantaprint-token'] || urlObj.searchParams.get('token');
       const isPortalOpen = cfg?.scanner?.portal_enabled !== false;
       const isAdmin = isAdminAuthenticated(req);
-      const isTokenValid = tokenHeader ? scannerPairingManager.verifyClientToken(tokenHeader).valid : false;
-      if (!isPortalOpen && !isAdmin && !isTokenValid) {
+      if (!isPortalOpen && !isAdmin) {
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         res.end('Akses berkas pindaian dibatasi oleh Administrator.');
         return;
@@ -7418,7 +7141,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'Merestart layanan appliance Hub...' }));
         setTimeout(() => {
-          runCmd('systemctl', ['restart', 'mantaprint-tui.service', 'mantaprint-agent.service', 'cups.service']).catch(() => {});
+          runCmd('systemctl', ['restart', 'mantaprint-tui.service', 'cups.service']).catch(() => {});
           setTimeout(() => {
             runCmd('systemctl', ['restart', 'mantaprint-web.service']).catch(() => {});
           }, 600);

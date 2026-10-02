@@ -32,13 +32,11 @@
   "homepage": "https://github.com/mantaplex/mantaprint-prototype#readme",
   "scripts": {
     "test": "npm test --prefix frontend && node --test test/*.test.mjs",
-    "build:frontend": "npm run build --prefix frontend && mkdir -p src/web/dist && rsync -av --delete --exclude=scanner --exclude=hdmi frontend/dist/ src/web/dist/",
-    "build:pwa": "npm run build --prefix apps/scanner-pwa && mkdir -p src/web/dist/scanner && cp -r apps/scanner-pwa/dist/* src/web/dist/scanner/",
-    "build": "npm run build:frontend && npm run build:pwa",
+    "build:frontend": "npm run build --prefix frontend && mkdir -p src/web/dist && rsync -av --delete --exclude=hdmi frontend/dist/ src/web/dist/",
+    "build": "npm run build:frontend",
     "start": "node src/web/server/server.mjs",
-    "agent": "node src/agent/agent.mjs",
     "tui": "node src/tui/app.mjs",
-    "lint": "bash -n install.sh scripts/*.sh system/bin/* && python3 -m py_compile src/core/*.py src/web/*.py",
+    "lint": "bash -n install.sh scripts/*.sh system/bin/* && python3 -m py_compile src/core/*.py",
     "deploy": "./scripts/deploy-to-device.sh all"
   },
   "author": "Mantaplex",

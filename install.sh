@@ -375,7 +375,6 @@ chmod 755 /usr/share/sane/epjitsu
 # 7. Setup Directory Structures & Storage Hierarchy
 echo -e "${BLUE}[5/8] Creating Storage Tiering & Volatile Scans Hierarchy...${NC}"
 mkdir -p /opt/mantaprint/web
-mkdir -p /opt/mantaprint/agent
 mkdir -p /opt/mantaprint/core
 mkdir -p /opt/mantaprint/tui
 mkdir -p /opt/mantaprint/src/backend
@@ -396,7 +395,6 @@ COMPLETED_STEPS+=("Zero-Trace Volatile RAM tmpfs provisioned at /run/mantaprint/
 # 8. Install Application Files, Compile Backend & Systemd Units
 echo -e "${BLUE}[6/8] Synchronizing MantaPrint Application Artifacts & Compiling C Backend...${NC}"
 rsync -a --delete "$SCRIPT_DIR/src/web/" /opt/mantaprint/web/
-rsync -a --delete "$SCRIPT_DIR/src/agent/" /opt/mantaprint/agent/
 rsync -a --delete "$SCRIPT_DIR/src/core/" /opt/mantaprint/core/
 if [ -d "$SCRIPT_DIR/src/tui" ]; then
     rsync -a --delete "$SCRIPT_DIR/src/tui/" /opt/mantaprint/tui/
@@ -455,9 +453,6 @@ rmmod usblp 2>/dev/null || true
 
 # Install systemd service units
 cp -a "$SCRIPT_DIR/systemd/mantaprint"*.service /etc/systemd/system/
-if [ -d "$SCRIPT_DIR/system/systemd" ]; then
-    cp -a "$SCRIPT_DIR/system/systemd/"*.service /etc/systemd/system/ 2>/dev/null || true
-fi
 COMPLETED_STEPS+=("Application artifacts, systemd service units, and udev rules installed")
 
 # Lockdown mode (print-only firewall) is re-applied at boot when it was enabled; harmless otherwise.
@@ -493,7 +488,6 @@ udevadm trigger 2>/dev/null || true
 # Enable and start core units
 systemctl enable --now mantaprint-storage-init.service 2>/dev/null || true
 systemctl enable --now mantaprint-web.service 2>/dev/null || true
-systemctl enable --now mantaprint-agent.service 2>/dev/null || true
 systemctl enable --now mantaprint-hotplug.service 2>/dev/null || true
 
 # Provision any USB printers currently connected at installation time
@@ -507,7 +501,7 @@ if [ -f /sys/class/rc/rc0 ]; then
 fi
 
 # Verify active status of essential services
-for svc in mantaprint-storage-init mantaprint-web mantaprint-agent mantaprint-hotplug; do
+for svc in mantaprint-storage-init mantaprint-web mantaprint-hotplug; do
     if systemctl is-active --quiet "${svc}.service" 2>/dev/null || [ "$svc" = "mantaprint-hotplug" ]; then
         COMPLETED_STEPS+=("Service ${svc}.service registered and active")
     else

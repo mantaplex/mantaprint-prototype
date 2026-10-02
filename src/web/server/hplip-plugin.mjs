@@ -148,8 +148,13 @@ export const PROMPT_RE = /(\(y=yes[^)]*\)\s*\?|\[y\/n(\/q)?\]\s*\??|\(y\/n\)\s*\
 export function runWithTty(cmd, args, { timeoutMs = 30000, onLine = () => {}, answer = 'y', cwd, maxAnswers = 20 } = {}) {
   return new Promise((resolve) => {
     let out = '', tail = '', done = false, answers = 0;
+    const hasScriptBin = fs.existsSync('/usr/bin/script');
     const shellCmd = [cmd, ...args].map((a) => `'${String(a).replace(/'/g, `'\\''`)}'`).join(' ');
-    const child = spawn('script', ['-qefc', shellCmd, '/dev/null'], { cwd, detached: true, env: { ...process.env, PATH: TOOL_PATH, LANG: 'C.UTF-8', TERM: 'dumb' }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const spawnBin = hasScriptBin ? '/usr/bin/script' : 'python3';
+    const spawnArgs = hasScriptBin
+      ? ['-qefc', shellCmd, '/dev/null']
+      : ['-c', 'import os, pty, sys; status = pty.spawn(sys.argv[1:]); sys.exit(os.waitstatus_to_exitcode(status))', cmd, ...args];
+    const child = spawn(spawnBin, spawnArgs, { cwd, detached: true, env: { ...process.env, PATH: TOOL_PATH, LANG: 'C.UTF-8', TERM: 'dumb' }, stdio: ['pipe', 'pipe', 'pipe'] });
     const killAll = () => { for (const pid of descendants(child.pid)) { try { process.kill(pid, 'SIGKILL'); } catch {} } try { process.kill(-child.pid, 'SIGKILL'); } catch {} try { child.kill('SIGKILL'); } catch {} };
     const timer = setTimeout(() => { if (!done) { onLine(`timeout after ${Math.round(timeoutMs / 1000)}s, killing installer`); killAll(); } }, timeoutMs);
     const clean = (t) => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\r/g, '');

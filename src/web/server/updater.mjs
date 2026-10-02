@@ -116,7 +116,7 @@ const UPDATER_I18N = {
     installPythonFail: p => `Verifikasi sintaks Python gagal: ${p.error}`,
     installMake: p => `[Install] Mengompilasi C backend di ${p.dir}...`,
     installMakeWarn: p => `[Install] Peringatan kompilasi C backend: ${p.error}`,
-    restartServices: () => '[Restart] Memulai ulang layanan latar belakang mantaprint-web dan mantaprint-agent...',
+    restartServices: () => '[Restart] Memulai ulang layanan latar belakang mantaprint-web...',
     updateSuccess: p => `[Selesai] Pembaruan berhasil diterapkan ke v${p.version}. Layanan sedang dimulai ulang.`,
     updateSuccessMsg: p => `Pembaruan berhasil diterapkan ke v${p.version}. Sistem sedang memuat ulang antarmuka.`,
     updateFailed: p => `[Gagal] Proses pembaruan terhenti: ${p.error}`,
@@ -177,7 +177,7 @@ const UPDATER_I18N = {
     installPythonFail: p => `Python syntax check failed: ${p.error}`,
     installMake: p => `[Install] Compiling native C backend in ${p.dir}...`,
     installMakeWarn: p => `[Install] C backend compile notice: ${p.error}`,
-    restartServices: () => '[Restart] Restarting background daemons mantaprint-web and mantaprint-agent...',
+    restartServices: () => '[Restart] Restarting background daemon mantaprint-web...',
     updateSuccess: p => `[Complete] Update applied successfully to v${p.version}. Reloading system services.`,
     updateSuccessMsg: p => `Update applied successfully to v${p.version}. System is refreshing the interface.`,
     updateFailed: p => `[Failed] Update process aborted: ${p.error}`,
@@ -597,7 +597,6 @@ export class ApplianceUpdater extends EventEmitter {
           
           await execFileAsync('rsync', ['-av', '--delete', '--exclude=.git', '--exclude=frontend/node_modules', `${devGit}/src/core/`, '/opt/mantaprint/core/']);
           await execFileAsync('rsync', ['-av', '--delete', '--exclude=.git', '--exclude=frontend/node_modules', `${devGit}/src/web/`, '/opt/mantaprint/web/']);
-          await execFileAsync('rsync', ['-av', '--delete', '--exclude=.git', '--exclude=frontend/node_modules', `${devGit}/src/agent/`, '/opt/mantaprint/agent/']);
           if (fs.existsSync(`${devGit}/version.json`)) {
             await execFileAsync('rsync', ['-av', `${devGit}/version.json`, '/opt/mantaprint/version.json']);
           }
@@ -632,9 +631,6 @@ export class ApplianceUpdater extends EventEmitter {
         }
         if (fs.existsSync(path.join(extractDir, 'src/web'))) {
           await execFileAsync('rsync', ['-av', '--delete', `${extractDir}/src/web/`, '/opt/mantaprint/web/']);
-        }
-        if (fs.existsSync(path.join(extractDir, 'src/agent'))) {
-          await execFileAsync('rsync', ['-av', '--delete', `${extractDir}/src/agent/`, '/opt/mantaprint/agent/']);
         }
         if (fs.existsSync(path.join(extractDir, 'version.json'))) {
           await execFileAsync('rsync', ['-av', `${extractDir}/version.json`, '/opt/mantaprint/version.json']);
@@ -696,7 +692,7 @@ export class ApplianceUpdater extends EventEmitter {
         try {
           await execFileAsync('systemctl', ['daemon-reload']).catch(() => {});
           await execFileAsync('cupsctl', ['BrowseLocalProtocols=none']).catch(() => {});
-          await execFileAsync('systemctl', ['restart', 'mantaprint-web', 'mantaprint-agent']).catch(() => {});
+          await execFileAsync('systemctl', ['restart', 'mantaprint-web']).catch(() => {});
         } catch (svcErr) {
           console.error('[Updater] Error restarting services:', svcErr.message);
         }
@@ -799,7 +795,7 @@ export class ApplianceUpdater extends EventEmitter {
       setTimeout(async () => {
         try {
           await execFileAsync('systemctl', ['daemon-reload']).catch(() => {});
-          await execFileAsync('systemctl', ['restart', 'mantaprint-web', 'mantaprint-agent']).catch(() => {});
+          await execFileAsync('systemctl', ['restart', 'mantaprint-web']).catch(() => {});
         } catch {}
       }, 1500);
 

@@ -26,6 +26,25 @@ function snapshotOf(doc, pages) {
   return { pageIds: [...doc.pageIds], byId };
 }
 
+/**
+ * Merges a newly rendered thumbnail into the latest page record without
+ * overwriting edits, annotations, roles, or OCR results that arrived while
+ * the thumbnail was rendering.
+ */
+export function mergeRenderedThumbnail(latestPage, renderedSnapshot, thumb) {
+  const base = latestPage || renderedSnapshot;
+  if (!base) return { next: null, stale: false };
+  const stale = Boolean(
+    latestPage &&
+    renderedSnapshot &&
+    (latestPage.edits !== renderedSnapshot.edits || latestPage.annotations !== renderedSnapshot.annotations)
+  );
+  return {
+    next: { ...base, thumb },
+    stale
+  };
+}
+
 export function useStudioDocument(docId) {
   const [doc, setDocState] = useState(null);
   // Latest document, readable synchronously (history snapshots must not wait for a render).
@@ -39,6 +58,9 @@ export function useStudioDocument(docId) {
   const urlCache = useRef(new Map()); // pageId -> { blob, url }
   const thumbTimers = useRef(new Map());
   const editTimers = useRef(new Map());
+  const annTimers = useRef(new Map());
+  const pendingWrites = useRef(new Map()); // key -> () => Promise<void>
+  const activeImports = useRef(0);
   const allPagesRef = useRef(new Map()); // pageId -> page record (incl. unreferenced)
 
   const urlFor = useCallback((pageId, blob) => {
@@ -58,6 +80,50 @@ export function useStudioDocument(docId) {
     setPages(ordered);
   }, [decorate]);
 
+  const persist = useCallback(async (fn) => {
+    setSaveState('saving');
+    try {
+      await fn();
+      if (pendingWrites.current.size === 0) {
+        setSaveState('saved');
+      }
+    } catch (err) {
+      console.error('[Studio] save failed', err);
+      setSaveState('error');
+    }
+  }, []);
+
+  const flushPendingWrites = useCallback(() => {
+    for (const t of editTimers.current.values()) clearTimeout(t);
+    editTimers.current.clear();
+    for (const t of annTimers.current.values()) clearTimeout(t);
+    annTimers.current.clear();
+    if (pendingWrites.current.size === 0) return Promise.resolve();
+    const tasks = [...pendingWrites.current.values()];
+    pendingWrites.current.clear();
+    return Promise.all(tasks.map((fn) => persist(fn)));
+  }, [persist]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onPageHide = () => { flushPendingWrites(); };
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        flushPendingWrites();
+      }
+    };
+    window.addEventListener('pagehide', onPageHide);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
+    };
+  }, [flushPendingWrites]);
+
   // Initial load
   useEffect(() => {
     let cancelled = false;
@@ -74,26 +140,22 @@ export function useStudioDocument(docId) {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [docId, applyOrder]);
+  }, [docId, applyOrder, setDoc]);
 
-  // Cleanup: revoke URLs and purge unreferenced pages
+  // Cleanup: flush pending writes, revoke URLs, and purge unreferenced pages atomically
   useEffect(() => {
     const cache = urlCache.current;
     return () => {
+      const flushed = flushPendingWrites();
       for (const { url } of cache.values()) URL.revokeObjectURL(url);
       cache.clear();
       (async () => {
-        const d = await db.getDocument(docId);
-        if (!d) return;
-        const all = await db.getPagesForDocument(docId);
-        const orphan = all.filter((p) => !d.pageIds.includes(p.id)).map((p) => p.id);
-        if (orphan.length) {
-          // deletePages() also updates counts; the ids are already absent from pageIds
-          await db.deletePages(docId, orphan);
-        }
+        await flushed;
+        if (activeImports.current > 0) return;
+        await db.purgeOrphanPages(docId);
       })();
     };
-  }, [docId]);
+  }, [docId, flushPendingWrites]);
 
   // Snapshot taken now, from refs, so it records the state before the change that follows.
   const pushHistory = useCallback(() => {
@@ -103,32 +165,24 @@ export function useStudioDocument(docId) {
     setHistory((h) => ({ past: [...h.past.slice(-HISTORY_LIMIT + 1), snap], future: [] }));
   }, []);
 
-  const persist = useCallback(async (fn) => {
-    setSaveState('saving');
-    try {
-      await fn();
-      setSaveState('saved');
-    } catch (err) {
-      console.error('[Studio] save failed', err);
-      setSaveState('error');
-    }
-  }, []);
-
   const scheduleThumb = useCallback((pageId) => {
     const timers = thumbTimers.current;
     if (timers.has(pageId)) clearTimeout(timers.get(pageId));
     timers.set(pageId, setTimeout(async () => {
       timers.delete(pageId);
-      const p = allPagesRef.current.get(pageId);
-      if (!p) return;
+      const snapshot = allPagesRef.current.get(pageId);
+      if (!snapshot) return;
       try {
-        const thumb = await renderThumbnail(p, 360);
-        const next = { ...p, thumb };
+        const thumb = await renderThumbnail(snapshot, 360);
+        const latest = allPagesRef.current.get(pageId);
+        const { next, stale } = mergeRenderedThumbnail(latest, snapshot, thumb);
+        if (!next) return;
         allPagesRef.current.set(pageId, next);
         await db.updatePage(pageId, { thumb });
         setPages((prev) => prev.map((x) => (x.id === pageId ? decorate(next) : x)));
-        const d = await db.getDocument(docId);
+        const d = docRef.current || await db.getDocument(docId);
         if (d && d.pageIds[0] === pageId) await db.refreshCover(docId);
+        if (stale) scheduleThumb(pageId);
       } catch (e) {
         console.warn('[Studio] thumbnail failed', e);
       }
@@ -138,42 +192,48 @@ export function useStudioDocument(docId) {
   // ---- Mutations ------------------------------------------------------------
 
   const addPagesFromBlobs = useCallback(async (items, { source = 'import', index = null } = {}) => {
-    if (!doc) return [];
+    const currentDoc = docRef.current || doc;
+    if (!currentDoc) return [];
     pushHistory();
+    activeImports.current += 1;
     const added = [];
     let insertAt = index;
-    for (const item of items) {
-      const blob = item.blob;
-      let width = item.width || 0;
-      let height = item.height || 0;
-      if (!width || !height) {
+    try {
+      for (const item of items) {
+        const blob = item.blob;
+        let width = item.width || 0;
+        let height = item.height || 0;
+        if (!width || !height) {
+          try {
+            const bmp = await decodeBlob(blob);
+            width = bmp.width; height = bmp.height;
+            if (bmp.close) bmp.close();
+          } catch { width = 0; height = 0; }
+        }
+        const base = {
+          blob, mime: blob.type || 'image/jpeg', width, height,
+          dpi: item.dpi || 300, source, role: item.role || 'normal',
+          edits: { ...db.DEFAULT_EDITS, ...(item.edits || {}) },
+          thumb: null,
+          name: item.name || ''
+        };
         try {
-          const bmp = await decodeBlob(blob);
-          width = bmp.width; height = bmp.height;
-          if (bmp.close) bmp.close();
-        } catch { width = 0; height = 0; }
+          base.thumb = await renderThumbnail(base, 360);
+        } catch {}
+        const { page, doc: nextDoc } = await db.addPage(currentDoc.id, base, { index: insertAt });
+        allPagesRef.current.set(page.id, page);
+        added.push(page);
+        setDoc(nextDoc);
+        applyOrder(nextDoc);
+        if (insertAt !== null) insertAt += 1;
       }
-      const base = {
-        blob, mime: blob.type || 'image/jpeg', width, height,
-        dpi: item.dpi || 300, source, role: item.role || 'normal',
-        edits: { ...db.DEFAULT_EDITS, ...(item.edits || {}) },
-        thumb: null,
-        name: item.name || ''
-      };
-      try {
-        base.thumb = await renderThumbnail(base, 360);
-      } catch {}
-      const { page, doc: nextDoc } = await db.addPage(doc.id, base, { index: insertAt });
-      allPagesRef.current.set(page.id, page);
-      added.push(page);
-      setDoc(nextDoc);
-      applyOrder(nextDoc);
-      if (insertAt !== null) insertAt += 1;
+      if (added.length && !currentDoc.cover) await db.refreshCover(currentDoc.id);
+      setSaveState('saved');
+      return added;
+    } finally {
+      activeImports.current = Math.max(0, activeImports.current - 1);
     }
-    if (added.length && !doc.cover) await db.refreshCover(doc.id);
-    setSaveState('saved');
-    return added;
-  }, [doc, pushHistory, applyOrder]);
+  }, [doc, pushHistory, applyOrder, setDoc]);
 
   const updateEdits = useCallback((pageId, patch, { record = true } = {}) => {
     const p = allPagesRef.current.get(pageId);
@@ -187,10 +247,17 @@ export function useStudioDocument(docId) {
     setPages((prev) => prev.map((x) => (x.id === pageId ? decorate(next) : x)));
     const timers = editTimers.current;
     if (timers.has(pageId)) clearTimeout(timers.get(pageId));
+    const writeKey = `edits:${pageId}`;
+    const writeFn = () => {
+      const cur = allPagesRef.current.get(pageId);
+      return db.updatePage(pageId, { edits: cur?.edits || edits, annotations: cur?.annotations || [] });
+    };
+    pendingWrites.current.set(writeKey, writeFn);
+    setSaveState('saving');
     timers.set(pageId, setTimeout(() => {
       timers.delete(pageId);
-      const cur = allPagesRef.current.get(pageId);
-      persist(() => db.updatePage(pageId, { edits: cur?.edits || edits, annotations: cur?.annotations || [] }));
+      pendingWrites.current.delete(writeKey);
+      persist(writeFn);
       scheduleThumb(pageId);
     }, 300));
   }, [pushHistory, decorate, persist, scheduleThumb]);
@@ -306,7 +373,6 @@ export function useStudioDocument(docId) {
   const getPageRecord = useCallback((id) => allPagesRef.current.get(id) || null, []);
 
   // ---- Page objects -----------------------------------------------------------
-  const annTimers = useRef(new Map());
   const setAnnotations = useCallback((pageId, updater, { record = true } = {}) => {
     const p = allPagesRef.current.get(pageId);
     if (!p) return;
@@ -318,10 +384,14 @@ export function useStudioDocument(docId) {
     setPages((prev) => prev.map((x) => (x.id === pageId ? decorate(next) : x)));
     const timers = annTimers.current;
     if (timers.has(pageId)) clearTimeout(timers.get(pageId));
+    const writeKey = `ann:${pageId}`;
+    const writeFn = () => db.updatePage(pageId, { annotations: allPagesRef.current.get(pageId)?.annotations || [] });
+    pendingWrites.current.set(writeKey, writeFn);
     setSaveState('saving');
     timers.set(pageId, setTimeout(() => {
       timers.delete(pageId);
-      persist(() => db.updatePage(pageId, { annotations: allPagesRef.current.get(pageId)?.annotations || [] }));
+      pendingWrites.current.delete(writeKey);
+      persist(writeFn);
       scheduleThumb(pageId);
     }, 250));
   }, [pushHistory, decorate, persist, scheduleThumb]);
@@ -357,8 +427,10 @@ export function useStudioDocument(docId) {
     canRedo: history.future.length > 0,
     addPagesFromBlobs, updateEdits, rotatePages, setRole, reorder, removePages, duplicate,
     rename, patchDoc, undo, redo, getPageRecord,
-    setAnnotations, addAnnotation, updateAnnotation, removeAnnotation, beginChange, setOcr
+    setAnnotations, addAnnotation, updateAnnotation, removeAnnotation, beginChange, setOcr,
+    flushPendingWrites
   }), [doc, pages, loading, saveState, history, addPagesFromBlobs, updateEdits, rotatePages, setRole,
     reorder, removePages, duplicate, rename, patchDoc, undo, redo, getPageRecord,
-    setAnnotations, addAnnotation, updateAnnotation, removeAnnotation, beginChange, setOcr]);
+    setAnnotations, addAnnotation, updateAnnotation, removeAnnotation, beginChange, setOcr,
+    flushPendingWrites]);
 }

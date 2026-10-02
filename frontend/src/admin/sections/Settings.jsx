@@ -41,7 +41,10 @@ function LockdownSection({ showToast, t, refresh }) {
   const act = async (key, fn) => {
     setBusy(key); setError('');
     try { const r = await fn(); if (!r.success) fail(r); else { showToast?.(t('adm.common.saved'), 'success'); setTouched(false); } }
-    catch (e) { try { fail(JSON.parse(e.message)); } catch { fail({ code: e.message }); } }
+    catch (e) {
+      if (e?.body && typeof e.body === 'object') fail(e.body);
+      else { try { fail(JSON.parse(e.message)); } catch { fail({ code: e.message }); } }
+    }
     finally { setBusy(null); setConfirm(null); setPin(''); setDisablePin(''); load(); refresh?.(); }
   };
 

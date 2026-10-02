@@ -67,7 +67,8 @@ def exec_cmd(args, timeout=10):
             shell=False,
             capture_output=True,
             text=True,
-            timeout=timeout
+            timeout=timeout,
+            env={**os.environ, "LC_ALL": "C"}
         )
         return res.returncode, res.stdout.strip(), res.stderr.strip()
     except subprocess.TimeoutExpired:
@@ -598,6 +599,26 @@ def get_driver_engine():
                 _driver_engine = DriverEngine()
     return _driver_engine
 
+def _disambiguate_queue_name(base_name, serial, used_names):
+    """Returns a unique CUPS queue name, appending a short serial suffix or counter on collision."""
+    candidate = base_name or "Printer"
+    if candidate not in used_names:
+        used_names.add(candidate)
+        return candidate
+    if serial:
+        clean_sn = re.sub(r'[^a-zA-Z0-9]', '', serial)[-6:]
+        if clean_sn:
+            sn_candidate = f"{candidate}_{clean_sn}"
+            if sn_candidate not in used_names:
+                used_names.add(sn_candidate)
+                return sn_candidate
+    idx = 2
+    while f"{candidate}_{idx}" in used_names:
+        idx += 1
+    final_name = f"{candidate}_{idx}"
+    used_names.add(final_name)
+    return final_name
+
 def probe_hardware_printers():
     """
     Detects ALL connected physical printers (both modern IPP-over-USB and classic USB).
@@ -605,7 +626,9 @@ def probe_hardware_printers():
     """
     printers = []
     seen_uris = set()
-    seen_devices = set()
+    ipp_seen_models = set()
+    ipp_seen_serials = set()
+    used_queue_names = set()
 
     # Step 1: Probe IPP-over-USB endpoints (Modern printers: Canon, HP, Epson, Brother ~2015+)
     # ipp-usb daemon binds loopback TCP ports starting at 60000 (60000..60005)
@@ -643,19 +666,20 @@ def probe_hardware_printers():
             raw_uuid = m_uuid.group(1).strip().replace("urn:uuid:", "") if m_uuid else ""
             is_color = m_color.group(1).strip().lower() == "true" if m_color else True
 
-            # Derive clean queue name e.g. Canon_G3030_series
-            clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{mfg}_{mdl}").strip('_')
-
             serial = parsed_1284.get("SN") or parsed_1284.get("SERN") or ""
             if not serial and "serial=" in devid_raw:
                 m_sn = re.search(r'serial=([^&;]+)', devid_raw)
                 if m_sn:
                     serial = m_sn.group(1)
 
+            # Derive clean queue name e.g. Canon_G3030_series (disambiguated if multiple identical units exist)
+            base_clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{mfg}_{mdl}").strip('_')
+            clean_name = _disambiguate_queue_name(base_clean_name, serial, used_queue_names)
+
             seen_uris.add(ipp_uri)
-            seen_devices.add(normalize(f"{mfg}_{mdl}"))
+            ipp_seen_models.add(normalize(f"{mfg}_{mdl}"))
             if serial:
-                seen_devices.add(normalize(serial))
+                ipp_seen_serials.add(normalize(serial))
 
             printers.append({
                 "uri": ipp_uri,
@@ -698,13 +722,16 @@ def probe_hardware_printers():
                 m_serial = re.search(r'serial=([^&]+)', uri)
                 serial = m_serial.group(1) if m_serial else ""
 
-                # Skip if already captured via IPP-over-USB
+                # Skip only if already captured via IPP-over-USB in Step 1
                 norm_key = normalize(f"{mfg}_{mdl}")
-                if norm_key in seen_devices or (serial and normalize(serial) in seen_devices):
+                if serial and normalize(serial) in ipp_seen_serials:
+                    continue
+                if not serial and norm_key in ipp_seen_models:
                     continue
 
                 seen_uris.add(uri)
-                clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{mfg}_{mdl}").strip('_')
+                base_clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{mfg}_{mdl}").strip('_')
+                clean_name = _disambiguate_queue_name(base_clean_name, serial, used_queue_names)
                 is_color = not any(k in mdl.lower() for k in ["laser", "hl-", "lbp", "m1132", "p1102", "1020"])
 
                 printers.append({
@@ -740,10 +767,12 @@ def probe_hardware_printers():
                     vendor = uri_parts[0] if len(uri_parts) > 0 else "Generic"
                     model_str = uri_parts[1].split("?")[0].replace("%20", " ") if len(uri_parts) > 1 else "Printer"
                     display_name = f"{vendor} {model_str}"
-                    clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', display_name).strip('_')
 
                     m_serial = re.search(r'serial=([^&]+)', uri)
                     serial = m_serial.group(1) if m_serial else ""
+
+                    base_clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', display_name).strip('_')
+                    clean_name = _disambiguate_queue_name(base_clean_name, serial, used_queue_names)
 
                     printers.append({
                         "uri": uri,
@@ -1079,6 +1108,16 @@ def get_all_local_ips():
         ips.insert(0, primary)
     return ips
 
+def _xml_escape(val):
+    s = str(val if val is not None else "")
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+         .replace('"', "&quot;")
+         .replace("'", "&apos;")
+    )
+
 def _generate_avahi_xml(service_name, queue_name, clean_type_name, model, uuid_str, ip_addr, is_color, is_duplex, is_online):
     pdl_str = "image/urf,image/pwg-raster,application/pdf"
     urf_str = "V1.4,W8,SRGB24,CP1,RS300-600"
@@ -1098,10 +1137,18 @@ def _generate_avahi_xml(service_name, queue_name, clean_type_name, model, uuid_s
         marker_types_str = "toner"
         marker_colors_str = "#000000"
 
+    esc_service_name = _xml_escape(service_name)
+    esc_queue_name = _xml_escape(queue_name)
+    esc_clean_type_name = _xml_escape(clean_type_name)
+    esc_model = _xml_escape(model)
+    esc_uuid_str = _xml_escape(uuid_str)
+    esc_ip_addr = _xml_escape(ip_addr)
+    esc_marker_names_str = _xml_escape(marker_names_str)
+
     return f"""<?xml version="1.0" standalone="no"?>
 <!DOCTYPE service-group SYSTEM "avahi-service-group.dtd">
 <service-group>
-  <name replace-wildcards="yes">{service_name}</name>
+  <name replace-wildcards="yes">{esc_service_name}</name>
   <service>
     <type>_ipp._tcp</type>
     <subtype>_universal._sub._ipp._tcp</subtype>
@@ -1109,11 +1156,11 @@ def _generate_avahi_xml(service_name, queue_name, clean_type_name, model, uuid_s
     <port>631</port>
     <txt-record>txtvers=1</txt-record>
     <txt-record>qtotal=1</txt-record>
-    <txt-record>rp=printers/{queue_name}</txt-record>
-    <txt-record>ty={clean_type_name}</txt-record>
-    <txt-record>product=({model})</txt-record>
-    <txt-record>UUID={uuid_str}</txt-record>
-    <txt-record>adminurl=http://{ip_addr}:631/printers/{queue_name}</txt-record>
+    <txt-record>rp=printers/{esc_queue_name}</txt-record>
+    <txt-record>ty={esc_clean_type_name}</txt-record>
+    <txt-record>product=({esc_model})</txt-record>
+    <txt-record>UUID={esc_uuid_str}</txt-record>
+    <txt-record>adminurl=http://{esc_ip_addr}:631/printers/{esc_queue_name}</txt-record>
     <txt-record>priority=0</txt-record>
     <txt-record>printer-state={printer_state}</txt-record>
     <txt-record>printer-state-reasons={printer_state_reasons}</txt-record>
@@ -1127,7 +1174,7 @@ def _generate_avahi_xml(service_name, queue_name, clean_type_name, model, uuid_s
     <txt-record>TLS=1.2,1.3</txt-record>
     <txt-record>note=Universal Network Printer</txt-record>
     <txt-record>marker-levels={marker_levels_str}</txt-record>
-    <txt-record>marker-names={marker_names_str}</txt-record>
+    <txt-record>marker-names={esc_marker_names_str}</txt-record>
     <txt-record>marker-types={marker_types_str}</txt-record>
     <txt-record>marker-colors={marker_colors_str}</txt-record>
   </service>
@@ -1138,11 +1185,11 @@ def _generate_avahi_xml(service_name, queue_name, clean_type_name, model, uuid_s
     <port>631</port>
     <txt-record>txtvers=1</txt-record>
     <txt-record>qtotal=1</txt-record>
-    <txt-record>rp=printers/{queue_name}</txt-record>
-    <txt-record>ty={clean_type_name}</txt-record>
-    <txt-record>product=({model})</txt-record>
-    <txt-record>UUID={uuid_str}</txt-record>
-    <txt-record>adminurl=https://{ip_addr}:631/printers/{queue_name}</txt-record>
+    <txt-record>rp=printers/{esc_queue_name}</txt-record>
+    <txt-record>ty={esc_clean_type_name}</txt-record>
+    <txt-record>product=({esc_model})</txt-record>
+    <txt-record>UUID={esc_uuid_str}</txt-record>
+    <txt-record>adminurl=https://{esc_ip_addr}:631/printers/{esc_queue_name}</txt-record>
     <txt-record>priority=0</txt-record>
     <txt-record>printer-state={printer_state}</txt-record>
     <txt-record>printer-state-reasons={printer_state_reasons}</txt-record>
@@ -1156,7 +1203,7 @@ def _generate_avahi_xml(service_name, queue_name, clean_type_name, model, uuid_s
     <txt-record>TLS=1.2,1.3</txt-record>
     <txt-record>note=Universal Network Printer</txt-record>
     <txt-record>marker-levels={marker_levels_str}</txt-record>
-    <txt-record>marker-names={marker_names_str}</txt-record>
+    <txt-record>marker-names={esc_marker_names_str}</txt-record>
     <txt-record>marker-types={marker_types_str}</txt-record>
     <txt-record>marker-colors={marker_colors_str}</txt-record>
   </service>
@@ -1212,16 +1259,15 @@ def write_avahi_service(queue_name, display_name, model, uuid_str, is_color=True
     # Ensure avahi-daemon interface exclusivity
     sync_avahi_interface_binding(net["iface"])
 
-    # Clean up duplicate alias service files to prevent multiple ghost printers
-    import glob
+    # Clean up exact legacy alias service file without deleting sibling queues (e.g. Queue_2)
     target_filename = f"mantaprint_{queue_name}.service"
     target_path = os.path.join(AVAHI_SERVICE_DIR, target_filename)
-    for old_file in glob.glob(os.path.join(AVAHI_SERVICE_DIR, f"*{queue_name}*.service")):
-        if old_file != target_path:
-            try:
-                os.remove(old_file)
-            except Exception:
-                pass
+    legacy_alias_path = os.path.join(AVAHI_SERVICE_DIR, f"heykprint_{queue_name}.service")
+    if os.path.exists(legacy_alias_path):
+        try:
+            os.remove(legacy_alias_path)
+        except Exception:
+            pass
 
     content = _generate_avahi_xml(mdns_service_name, queue_name, clean_type_name, model, uuid_str, ip_addr, is_color, is_duplex, is_online)
     changed = False
@@ -1240,11 +1286,11 @@ def write_avahi_service(queue_name, display_name, model, uuid_str, is_color=True
     return changed
 
 def remove_avahi_service(queue_name):
-    """Removes all Avahi service files for disconnected printer."""
-    import glob
+    """Removes exact Avahi service files for disconnected printer without touching sibling queues."""
     removed = False
-    for pat in [f"mantaprint_{queue_name}*.service", f"heykprint_{queue_name}*.service"]:
-        for f in glob.glob(os.path.join(AVAHI_SERVICE_DIR, pat)):
+    for fname in (f"mantaprint_{queue_name}.service", f"heykprint_{queue_name}.service"):
+        f = os.path.join(AVAHI_SERVICE_DIR, fname)
+        if os.path.exists(f):
             try:
                 os.remove(f)
                 removed = True
@@ -1263,6 +1309,8 @@ def cleanup_legacy_services():
     ]
     for pat in legacy_patterns:
         for f in glob.glob(os.path.join(AVAHI_SERVICE_DIR, pat)):
+            if os.path.basename(f) == "mantaprint_web.service":
+                continue
             try:
                 os.remove(f)
             except Exception:
@@ -1412,6 +1460,18 @@ def get_hp_firmware(key, force=False):
     if os.path.exists(cached) and os.path.getsize(cached) > 0:
         return cached
 
+    # Also check standard system firmware locations where install.sh or foo2zjs pre-installs .dl files
+    for sys_dir in ("/usr/share/foo2zjs/firmware", "/etc/foo2zjs/firmware", "/lib/firmware/hp"):
+        sys_candidate = os.path.join(sys_dir, dl_name)
+        if os.path.exists(sys_candidate) and os.path.getsize(sys_candidate) > 0:
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+                with open(sys_candidate, "rb") as src, open(cached, "wb") as dst:
+                    dst.write(src.read())
+                return cached
+            except Exception:
+                return sys_candidate
+
     attempts = _load_firmware_attempts()
     last = attempts.get(key, {})
     if not force and last.get("at") and (time.time() - last["at"]) < GETWEB_RETRY_SECONDS:
@@ -1424,7 +1484,16 @@ def get_hp_firmware(key, force=False):
 
     try:
         os.makedirs(GETWEB_OUTPUT_DIR, exist_ok=True)
-        code, out, err = exec_cmd(["getweb", getweb_key], timeout=30)
+        proc = subprocess.run(
+            ["getweb", getweb_key],
+            cwd=GETWEB_OUTPUT_DIR,
+            shell=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={**os.environ, "LC_ALL": "C"}
+        )
+        code, out, err = proc.returncode, proc.stdout.strip(), proc.stderr.strip()
         produced = os.path.join(GETWEB_OUTPUT_DIR, dl_name)
         if code == 0 and os.path.exists(produced) and os.path.getsize(produced) > 0:
             os.makedirs(cache_dir, exist_ok=True)
@@ -1488,6 +1557,10 @@ def provision_hp_firmware(hw, force=False):
         return "ready"
     if key == "no_source":
         return "unsupported"
+    # Once HP LaserJet 10xx/P10xx has loaded firmware into RAM, its IEEE 1284 Device ID includes FWVER:...
+    dev_id_upper = (hw.get("device_id") or "").upper()
+    if not force and "FWVER:" in dev_id_upper:
+        return "ready"
     dl_path = get_hp_firmware(key, force=force)
     if not dl_path:
         return "needs_firmware"
@@ -2163,9 +2236,6 @@ def _sync_all_printers_locked():
             print("[!] Avahi daemon is in failed state. Restarting avahi-daemon...")
             exec_cmd(["systemctl", "restart", "avahi-daemon"])
 
-        # Silence CUPS native raw DNS-SD to prevent duplicate "@ host" Generic PostScript broadcasts
-        exec_cmd(["cupsctl", "BrowseLocalProtocols=none"])
-
         cleanup_legacy_services()
         hw_printers = probe_hardware_printers()
         cups_printers, default_q = get_cups_printers()
@@ -2324,7 +2394,7 @@ def _sync_all_printers_locked():
 
         # Dynamically set default destination to the physically connected printer
         if connected_queues:
-            primary_queue = list(connected_queues)[0]
+            primary_queue = sorted(connected_queues)[0]
             if (not default_q) or (default_q not in connected_queues) or (len(connected_queues) == 1 and default_q != primary_queue):
                 print(f"[*] Dynamically routing default printer destination to connected device: {primary_queue}")
                 exec_cmd(["lpadmin", "-d", primary_queue])

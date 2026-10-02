@@ -8,7 +8,5 @@ ExecStart=/usr/local/bin/mantaprint-storage-manager.sh handle-unplug %I
 TimeoutSec=30
 Nice=0
 NoNewPrivileges=yes
-ProtectControlGroups=yes
-ProtectKernelTunables=yes
 StandardOutput=journal
 StandardError=journal

@@ -92,8 +92,9 @@ def deskew_image(img_pil, angle=None):
     if abs(angle) < 0.05:
         return img_pil
 
+    fill = 255 if img_pil.mode in ("L", "1", "I;16", "I", "F") else (255, 255, 255)
     # PIL rotate uses counter-clockwise angle; negative counters clockwise skew
-    return img_pil.rotate(-angle, resample=Image.Resampling.BILINEAR, expand=True, fillcolor=(255, 255, 255))
+    return img_pil.rotate(-angle, resample=Image.Resampling.BILINEAR, expand=True, fillcolor=fill)
 
 # ==========================================
 # 2. MORPHOLOGICAL ILLUMINATION NORMALIZATION

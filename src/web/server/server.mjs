@@ -1427,6 +1427,15 @@ function getPrinterReadiness() {
   return {};
 }
 
+function escapeXml(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr, ipAddr, isColor, isDuplex, isOnline) {
   const pdlStr = 'image/urf,image/pwg-raster,application/pdf';
   const urfStr = 'V1.4,W8,SRGB24,CP1,RS300-600';
@@ -1449,10 +1458,18 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     markerNamesStr = 'Canon Cartridge 325 (Black Toner)';
   }
 
+  const escServiceName = escapeXml(serviceName);
+  const escQueueName = escapeXml(queueName);
+  const escCleanTypeName = escapeXml(cleanTypeName);
+  const escProduct = escapeXml(model || queueName);
+  const escUuidStr = escapeXml(uuidStr);
+  const escIpAddr = escapeXml(ipAddr);
+  const escMarkerNamesStr = escapeXml(markerNamesStr);
+
   return `<?xml version="1.0" standalone="no"?>
 <!DOCTYPE service-group SYSTEM "avahi-service-group.dtd">
 <service-group>
-  <name replace-wildcards="yes">${serviceName}</name>
+  <name replace-wildcards="yes">${escServiceName}</name>
   <service>
     <type>_ipp._tcp</type>
     <subtype>_universal._sub._ipp._tcp</subtype>
@@ -1460,11 +1477,11 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <port>631</port>
     <txt-record>txtvers=1</txt-record>
     <txt-record>qtotal=1</txt-record>
-    <txt-record>rp=printers/${queueName}</txt-record>
-    <txt-record>ty=${cleanTypeName}</txt-record>
-    <txt-record>product=(${model || queueName})</txt-record>
-    <txt-record>UUID=${uuidStr}</txt-record>
-    <txt-record>adminurl=http://${ipAddr}:631/printers/${queueName}</txt-record>
+    <txt-record>rp=printers/${escQueueName}</txt-record>
+    <txt-record>ty=${escCleanTypeName}</txt-record>
+    <txt-record>product=(${escProduct})</txt-record>
+    <txt-record>UUID=${escUuidStr}</txt-record>
+    <txt-record>adminurl=http://${escIpAddr}:631/printers/${escQueueName}</txt-record>
     <txt-record>priority=0</txt-record>
     <txt-record>printer-state=${printerState}</txt-record>
     <txt-record>printer-state-reasons=${printerStateReasons}</txt-record>
@@ -1478,7 +1495,7 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <txt-record>TLS=1.2,1.3</txt-record>
     <txt-record>note=Universal Network Printer</txt-record>
     <txt-record>marker-levels=${markerLevelsStr}</txt-record>
-    <txt-record>marker-names=${markerNamesStr}</txt-record>
+    <txt-record>marker-names=${escMarkerNamesStr}</txt-record>
     <txt-record>marker-types=${markerTypesStr}</txt-record>
     <txt-record>marker-colors=${markerColorsStr}</txt-record>
   </service>
@@ -1489,11 +1506,11 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <port>631</port>
     <txt-record>txtvers=1</txt-record>
     <txt-record>qtotal=1</txt-record>
-    <txt-record>rp=printers/${queueName}</txt-record>
-    <txt-record>ty=${cleanTypeName}</txt-record>
-    <txt-record>product=(${model || queueName})</txt-record>
-    <txt-record>UUID=${uuidStr}</txt-record>
-    <txt-record>adminurl=https://${ipAddr}:631/printers/${queueName}</txt-record>
+    <txt-record>rp=printers/${escQueueName}</txt-record>
+    <txt-record>ty=${escCleanTypeName}</txt-record>
+    <txt-record>product=(${escProduct})</txt-record>
+    <txt-record>UUID=${escUuidStr}</txt-record>
+    <txt-record>adminurl=https://${escIpAddr}:631/printers/${escQueueName}</txt-record>
     <txt-record>priority=0</txt-record>
     <txt-record>printer-state=${printerState}</txt-record>
     <txt-record>printer-state-reasons=${printerStateReasons}</txt-record>
@@ -1507,7 +1524,7 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <txt-record>TLS=1.2,1.3</txt-record>
     <txt-record>note=Universal Network Printer</txt-record>
     <txt-record>marker-levels=${markerLevelsStr}</txt-record>
-    <txt-record>marker-names=${markerNamesStr}</txt-record>
+    <txt-record>marker-names=${escMarkerNamesStr}</txt-record>
     <txt-record>marker-types=${markerTypesStr}</txt-record>
     <txt-record>marker-colors=${markerColorsStr}</txt-record>
   </service>
@@ -1531,15 +1548,12 @@ function writeAvahiService(queueName, displayName, model, isColor = true, isDupl
     const uuidStr = crypto.createHash('md5').update(`mantaprint-${queueName}`).digest('hex');
     const xml = generateAvahiXml(serviceName, queueName, cleanTypeName, model || queueName, uuidStr, net.ip, isColor, isDuplex, isOnline);
     
-    // Clean up duplicate legacy files for this queue
-    const files = fs.readdirSync(avahiDir);
+    // Clean up exact legacy alias file for this queue without deleting sibling queues (e.g. Queue_2)
     const targetFile = `mantaprint_${queueName}.service`;
     const targetPath = path.join(avahiDir, targetFile);
-
-    for (const f of files) {
-      if (f.includes(queueName) && f.endsWith('.service') && f !== targetFile) {
-        try { fs.unlinkSync(path.join(avahiDir, f)); } catch {}
-      }
+    const legacyFile = path.join(avahiDir, `heykprint_${queueName}.service`);
+    if (fs.existsSync(legacyFile)) {
+      try { fs.unlinkSync(legacyFile); } catch {}
     }
 
     let existing = '';
@@ -1560,11 +1574,11 @@ function removeAvahiService(queueName) {
   let removed = false;
   try {
     if (!fs.existsSync(avahiDir)) return false;
-    const files = fs.readdirSync(avahiDir);
-    for (const f of files) {
-      if ((f.startsWith(`mantaprint_${queueName}`) || f.startsWith(`heykprint_${queueName}`) || f.includes(queueName)) && f.endsWith('.service')) {
+    for (const f of [`mantaprint_${queueName}.service`, `heykprint_${queueName}.service`]) {
+      const fullPath = path.join(avahiDir, f);
+      if (fs.existsSync(fullPath)) {
         try {
-          fs.unlinkSync(path.join(avahiDir, f));
+          fs.unlinkSync(fullPath);
           removed = true;
         } catch {}
       }
@@ -1663,6 +1677,12 @@ function printerManagerScript() {
   return path.join(__dirname, '../../core/printer_manager.py');
 }
 
+function testPageGeneratorScript() {
+  if (fs.existsSync('/opt/mantaprint/core/test_page_generator.py')) return '/opt/mantaprint/core/test_page_generator.py';
+  if (fs.existsSync('/opt/mantaprint/test_page_generator.py')) return '/opt/mantaprint/test_page_generator.py';
+  return path.join(__dirname, '../../core/test_page_generator.py');
+}
+
 // ---- Network printer discovery & adoption (printer_manager.py discover-network) -------------
 let lastDiscovery = null;
 let discoveryInflight = null;
@@ -1748,6 +1768,7 @@ class PrintJobTracker extends EventEmitter {
     this.jobs = new Map();
     this.activeWatcherTimer = null;
     this.lastActiveCount = 0;
+    this.syncing = false;
   }
 
   registerJob({ id, printer, title, user = 'anonymous', size = 0 }) {
@@ -1777,9 +1798,19 @@ class PrintJobTracker extends EventEmitter {
     this.jobs.set(String(numericId), job);
 
     if (this.jobs.size > 200) {
-      const keys = Array.from(this.jobs.keys());
-      for (let i = 0; i < 40; i++) {
-        this.jobs.delete(keys[i]);
+      let evicted = 0;
+      for (const [k, j] of this.jobs.entries()) {
+        if (['completed', 'error', 'canceled', 'timeout', 'deleted'].includes(j.state)) {
+          this.jobs.delete(k);
+          evicted++;
+          if (evicted >= 40) break;
+        }
+      }
+      if (this.jobs.size > 200) {
+        const keys = Array.from(this.jobs.keys());
+        for (let i = 0; i < 40 && i < keys.length; i++) {
+          this.jobs.delete(keys[i]);
+        }
       }
     }
 
@@ -1801,7 +1832,7 @@ class PrintJobTracker extends EventEmitter {
   }
 
   getActiveJobs() {
-    return this.getAllJobs().filter(j => ['pending', 'processing', 'printing'].includes(j.state));
+    return this.getAllJobs().filter(j => ['pending', 'processing', 'printing', 'attention'].includes(j.state));
   }
 
   updateJob(idOrNumeric, patch) {
@@ -1884,6 +1915,8 @@ class PrintJobTracker extends EventEmitter {
   }
 
   async syncWithCups() {
+    if (this.syncing) return;
+    this.syncing = true;
     try {
       const [lpstatP, lpstatLp, lpstatJobs, lpstatCompleted] = await Promise.all([
         runCmd('lpstat', ['-p']),
@@ -1892,20 +1925,36 @@ class PrintJobTracker extends EventEmitter {
         runCmd('lpstat', ['-l', '-W', 'completed'])
       ]);
 
+      // Do not mark jobs completed/failed if CUPS daemon / lpstat failed to respond
+      if (lpstatP.code !== 0 && lpstatJobs.code !== 0) {
+        return;
+      }
+
       const now = Date.now();
 
-      // 1. Inspect lpstat -p for active printing job or stopped printer
+      // 1. Inspect lpstat -p per printer for active printing job or stopped printer
       let activePrintingJobId = null;
       let printerStateText = 'idle';
+      const printerStates = new Map();
+      const activePrintingByPrinter = new Map();
 
       for (const rawLine of lpstatP.stdout.split('\n')) {
         const line = rawLine.trim();
+        const matchPrinter = line.match(/^printer\s+([^\s]+)\s+/i);
+        const qName = matchPrinter ? matchPrinter[1] : null;
         const matchPrinting = line.match(/printer\s+([^\s]+)\s+now printing\s+([^\s\.]+)/i);
         if (matchPrinting) {
           activePrintingJobId = matchPrinting[2].trim();
           printerStateText = 'printing';
+          if (qName) {
+            printerStates.set(qName, 'printing');
+            activePrintingByPrinter.set(qName, activePrintingJobId);
+          }
         } else if (line.includes('disabled since') || line.includes('is stopped')) {
           printerStateText = 'stopped';
+          if (qName) printerStates.set(qName, 'stopped');
+        } else if (qName && line.includes('is idle')) {
+          printerStates.set(qName, 'idle');
         }
       }
 
@@ -1941,7 +1990,7 @@ class PrintJobTracker extends EventEmitter {
           if (!this.getJob(jId)) {
             this.registerJob({
               id: jId,
-              printer: jId.split('-')[0] || 'default',
+              printer: jId.replace(/-\d+$/, '') || 'default',
               user: headerMatch[2],
               size: parseInt(headerMatch[3], 10)
             });
@@ -1981,6 +2030,13 @@ class PrintJobTracker extends EventEmitter {
           continue;
         }
 
+        const jobPrinterState = (job.printer && printerStates.has(job.printer))
+          ? printerStates.get(job.printer)
+          : printerStateText;
+        const jobActivePrintingId = (job.printer && activePrintingByPrinter.has(job.printer))
+          ? activePrintingByPrinter.get(job.printer)
+          : activePrintingJobId;
+
         // Check if job is in CUPS completed log (by full ID or numeric ID)
         const compInfo = completedJobMap.get(job.id) || (job.numeric_id ? completedJobMap.get(String(job.numeric_id)) : null);
         if (compInfo) {
@@ -2009,8 +2065,8 @@ class PrintJobTracker extends EventEmitter {
         }
 
         const isInSpool = activeSpoolJobIds.has(job.id) || (job.numeric_id && activeSpoolJobIds.has(String(job.numeric_id)));
-        const isActivelyPrinting = (activePrintingJobId && (activePrintingJobId === job.id || activePrintingJobId === String(job.numeric_id))) ||
-                                   (!activePrintingJobId && isInSpool && printerStateText === 'printing');
+        const isActivelyPrinting = (jobActivePrintingId && (jobActivePrintingId === job.id || jobActivePrintingId === String(job.numeric_id))) ||
+                                   (!jobActivePrintingId && isInSpool && jobPrinterState === 'printing');
 
         // If printer attention / out-of-paper while job is active or in spool
         const hasMediaAttention = lpAlerts.some(a => a.toLowerCase().includes('media-needed') || a.toLowerCase().includes('media-empty')) ||
@@ -2051,7 +2107,7 @@ class PrintJobTracker extends EventEmitter {
 
         // If job is in spool
         if (isInSpool) {
-          if (printerStateText === 'stopped') {
+          if (jobPrinterState === 'stopped') {
             this.updateJob(job.id, {
               state: 'error',
               status_message: `Printer terhenti: ${lpAlerts.join(', ') || 'Printer offline atau ada kendala'}`,
@@ -2069,8 +2125,8 @@ class PrintJobTracker extends EventEmitter {
         }
 
         // Job has departed CUPS spool: if printer is idle or job submitted > 10s ago, conclude it
-        if (now - job.submitted_at > 10000 || (!isInSpool && !activePrintingJobId)) {
-          if (printerStateText === 'stopped' || lpAlerts.some(a => a.toLowerCase().includes('error') || a.toLowerCase().includes('stopped'))) {
+        if (now - job.submitted_at > 10000 || (!isInSpool && !jobActivePrintingId)) {
+          if (jobPrinterState === 'stopped' || lpAlerts.some(a => a.toLowerCase().includes('error') || a.toLowerCase().includes('stopped'))) {
             this.updateJob(job.id, {
               state: 'error',
               status_message: lpStatus || `Gagal mencetak: ${lpAlerts.join(', ') || 'Printer dihentikan oleh CUPS'}`,
@@ -2088,6 +2144,8 @@ class PrintJobTracker extends EventEmitter {
       }
     } catch (err) {
       console.warn('[!] Error syncing jobs with CUPS:', err.message);
+    } finally {
+      this.syncing = false;
     }
   }
 
@@ -2124,6 +2182,7 @@ function startActivePrintJobWatcher() {
 
 let avahiRestartBackoffMs = 15000;
 let nextAvahiRestartAt = 0;
+const ippUsbFailures = new Map();
 
 async function probePrinterTelemetry() {
   const connectedUsbPrinters = getConnectedUsbPrinters();
@@ -2253,10 +2312,15 @@ async function probePrinterTelemetry() {
       ], 1500);
 
       if (ippRes.code === 0 && ippRes.stdout) {
+        ippUsbFailures.delete(qName);
         classification = 'active_usb';
         canDelete = false;
         qConn = true;
         isPublished = pOverrides.is_published !== undefined ? Boolean(pOverrides.is_published) : true;
+        if (matchingQ && matchingQ.state === 'stopped') {
+          runCmd('cupsenable', [qName]).catch(() => {});
+          qState = 'idle';
+        }
         const out = ippRes.stdout;
         const mMM = out.match(/printer-make-and-model\s+\([^)]+\)\s*=\s*(.+)/);
         const mNames = out.match(/marker-names\s+\([^)]+\)\s*=\s*(.+)/);
@@ -2272,13 +2336,23 @@ async function probePrinterTelemetry() {
         if (mAlert) qAlert = mAlert[1].trim();
         if (mDevId) qDevId = mDevId[1].trim();
       } else {
-        classification = 'inactive_usb';
-        canDelete = true;
-        qConn = false;
-        qAlert = 'Printer USB sedang offline atau tidak merespons';
-        qState = 'disconnected';
-        isPublished = false;
-        runCmd('cupsdisable', ['-r', 'Printer offline atau dimatikan', qName]).catch(() => {});
+        const isBusyPrinting = qState === 'processing' || qState === 'printing';
+        const failCount = isBusyPrinting ? 0 : ((ippUsbFailures.get(qName) || 0) + 1);
+        ippUsbFailures.set(qName, failCount);
+        if (isBusyPrinting || failCount < 3) {
+          classification = 'active_usb';
+          canDelete = false;
+          qConn = true;
+          isPublished = pOverrides.is_published !== undefined ? Boolean(pOverrides.is_published) : true;
+        } else {
+          classification = 'inactive_usb';
+          canDelete = true;
+          qConn = false;
+          qAlert = 'Printer USB sedang offline atau tidak merespons';
+          qState = 'disconnected';
+          isPublished = false;
+          runCmd('cupsdisable', ['-r', 'Printer offline atau dimatikan', qName]).catch(() => {});
+        }
       }
     } else if (devUri.startsWith('usb://') || devUri.startsWith('mantaprint-usb://')) {
       protocol = 'usb';
@@ -2497,6 +2571,7 @@ async function probePrinterTelemetry() {
       const files = fs.readdirSync(avahiDir);
       let prunedAny = false;
       for (const f of files) {
+        if (f === 'mantaprint_web.service') continue;
         if ((f.startsWith('mantaprint_') || f.startsWith('heykprint_')) && f.endsWith('.service')) {
           const match = f.match(/^(?:mantaprint_|heykprint_)(.+)\.service$/);
           if (match && match[1]) {
@@ -2836,9 +2911,7 @@ function startUsbHardwareWatcher() {
           }).catch(() => {});
 
           // 2. Trigger CUPS / Avahi dynamic synchronization in background
-          const genScript = fs.existsSync('/opt/mantaprint/printer_manager.py')
-            ? '/opt/mantaprint/printer_manager.py'
-            : path.join(__dirname, '../../core/printer_manager.py');
+          const genScript = printerManagerScript();
 
           if (fs.existsSync(genScript)) {
             runCmd('python3', [genScript], 10000)
@@ -2881,9 +2954,7 @@ async function handleNetworkIpChange(newIp) {
   }
 
   // 2. Trigger printer_manager.py to update Avahi DNS-SD XML service files on disk
-  const scriptPath = fs.existsSync('/opt/mantaprint/printer_manager.py')
-    ? '/opt/mantaprint/printer_manager.py'
-    : path.join(__dirname, '../../core/printer_manager.py');
+  const scriptPath = printerManagerScript();
   if (fs.existsSync(scriptPath)) {
     console.log(`[*] Triggering printer_manager to update Avahi mDNS service name with new IP (${newIp})...`);
     runCmd('/usr/bin/python3', [scriptPath], 10000)
@@ -3495,7 +3566,7 @@ const server = http.createServer(async (req, res) => {
     };
 
     // CUPS Web UI Reverse Proxy (/cups/* -> 127.0.0.1:631/*)
-    if (pathname.startsWith('/cups')) {
+    if (pathname === '/cups' || pathname.startsWith('/cups/')) {
       if (!isAdminOrLocal(req)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan untuk akses CUPS.' }));
@@ -3503,22 +3574,31 @@ const server = http.createServer(async (req, res) => {
       }
       const targetPath = pathname.replace(/^\/cups/, '') || '/';
       const cupsUrl = `http://127.0.0.1:631${targetPath}${url.search}`;
-      
+      const forwardedHeaders = { ...req.headers, host: '127.0.0.1:631' };
+      delete forwardedHeaders['x-admin-token'];
+      delete forwardedHeaders['authorization'];
+
       const proxyReq = http.request(cupsUrl, {
         method: req.method,
-        headers: {
-          ...req.headers,
-          host: '127.0.0.1:631'
-        }
+        headers: forwardedHeaders
       }, (cupsRes) => {
         res.writeHead(cupsRes.statusCode, cupsRes.headers);
+        cupsRes.on('error', () => {
+          if (!res.writableEnded) res.destroy();
+        });
         cupsRes.pipe(res);
+      });
+
+      proxyReq.setTimeout(30000, () => {
+        proxyReq.destroy(new Error('CUPS upstream timeout'));
       });
 
       proxyReq.on('error', (err) => {
         if (!res.headersSent) {
           res.writeHead(502, { 'Content-Type': 'text/plain' });
           res.end('CUPS daemon unavailable: ' + err.message);
+        } else if (!res.writableEnded) {
+          res.destroy();
         }
       });
 
@@ -3539,23 +3619,32 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ success: false, message: 'Layanan WebScan saat ini dinonaktifkan oleh Administrator.' }));
         return;
       }
+      const forwardedHeaders = { ...req.headers, host: 'localhost:60000' };
+      delete forwardedHeaders['x-admin-token'];
+      delete forwardedHeaders['authorization'];
+
       const proxyReq = http.request({
         hostname: '127.0.0.1',
         port: 60000,
         path: req.url,
         method: req.method,
-        headers: {
-          ...req.headers,
-          host: 'localhost:60000'
-        }
+        headers: forwardedHeaders
       }, (proxyRes) => {
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.on('error', () => {
+          if (!res.writableEnded) res.destroy();
+        });
         proxyRes.pipe(res);
+      });
+      proxyReq.setTimeout(30000, () => {
+        proxyReq.destroy(new Error('eSCL upstream timeout'));
       });
       proxyReq.on('error', () => {
         if (!res.headersSent) {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, message: 'Scanner eSCL endpoint offline.' }));
+        } else if (!res.writableEnded) {
+          res.destroy();
         }
       });
       req.once('close', () => {
@@ -3806,7 +3895,7 @@ const server = http.createServer(async (req, res) => {
       const target = String(body.queue || item.target || '');
       const job = driverCenter.startJob(`install-${file.kind}`, file.name, async (log) => {
         if (file.kind === 'deb') {
-          const r = await driverCenter.installDeb(file.path, { log });
+          const r = await driverCenter.installDeb(file.path, { pkgName: file.info?.package || '', log });
           if (r.ok) {
             const keepDir = path.join(pickWorkBase().dir, 'drivers', 'deb');
             fs.mkdirSync(keepDir, { recursive: true, mode: 0o700 });
@@ -3935,6 +4024,7 @@ const server = http.createServer(async (req, res) => {
       try { fileName = path.basename(decodeURIComponent(String(req.headers['x-file-name'] || ''))).slice(0, 200); } catch {}
       const base = pickWorkBase();
       const keep = path.join(base.dir, 'drivers', 'hplip');
+      let receivingHplipUpload = true;
       hplipPluginBusy = true;
       try {
         fs.mkdirSync(keep, { recursive: true, mode: 0o700 });
@@ -3946,14 +4036,20 @@ const server = http.createServer(async (req, res) => {
         }
         const upload = path.join(keep, 'upload.run');
         try { await receiveUpload(req, upload, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+        // Release receive guard before starting the async job (startHplipPluginJob manages hplipPluginBusy itself)
+        receivingHplipUpload = false;
+        hplipPluginBusy = false;
         const job = startHplipPluginJob({ filePath: upload, fileName, ascPath: path.join(keep, 'pending.asc'), size: length });
-        if (!job) return reply(409, { success: false, code: 'busy' });
+        if (!job) {
+          try { fs.unlinkSync(upload); } catch {}
+          return reply(409, { success: false, code: 'busy' });
+        }
         return reply(200, { success: true, job });
       } catch (err) {
         console.error('[HPLIP plugin] Upload failed:', err.message);
         return reply(500, { success: false, code: 'install_failed' });
       } finally {
-        hplipPluginBusy = false;
+        if (receivingHplipUpload) hplipPluginBusy = false;
       }
     }
 
@@ -5040,9 +5136,7 @@ const server = http.createServer(async (req, res) => {
       const pdfPath = `/tmp/mantaprint_testpage_${queue}_${process.pid}_${Date.now()}.pdf`;
       const displayName = cachedStatus?.printer?.display_name || queue.replace(/_/g, ' ');
 
-      const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
-        ? '/opt/mantaprint/test_page_generator.py'
-        : path.join(__dirname, '../../core/test_page_generator.py');
+      const genScript = testPageGeneratorScript();
 
       if (fs.existsSync(genScript)) {
         const currentLang = getCurrentSystemLanguage();
@@ -5134,9 +5228,7 @@ const server = http.createServer(async (req, res) => {
       const displayName = cachedStatus?.printer?.display_name || queue.replace(/_/g, ' ');
       const pdfPath = `/tmp/mantaprint_testpage_${queue}_${process.pid}_${Date.now()}.pdf`;
 
-      const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
-        ? '/opt/mantaprint/test_page_generator.py'
-        : path.join(__dirname, '../../core/test_page_generator.py');
+      const genScript = testPageGeneratorScript();
 
       if (fs.existsSync(genScript)) {
         const currentLang = getCurrentSystemLanguage();
@@ -6074,10 +6166,8 @@ const server = http.createServer(async (req, res) => {
       const targetPrinter = (curStatus.printers || []).find(p => p.queue_name === targetQueue || p.name === targetQueue);
       const displayName = targetPrinter ? targetPrinter.display_name : targetQueue.replace(/_/g, ' ');
 
-      const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
-        ? '/opt/mantaprint/test_page_generator.py'
-        : path.join(__dirname, '../../core/test_page_generator.py');
-      const pdfPath = `/tmp/mantaprint_testpage_${targetQueue}.pdf`;
+      const genScript = testPageGeneratorScript();
+      const pdfPath = `/tmp/mantaprint_testpage_${targetQueue}_${process.pid}_${Date.now()}.pdf`;
 
       if (fs.existsSync(genScript)) {
         const currentLang = getCurrentSystemLanguage();
@@ -6090,11 +6180,13 @@ const server = http.createServer(async (req, res) => {
       let printRes;
       if (fs.existsSync(pdfPath)) {
         printRes = await runCmd('lp', ['-d', targetQueue, '-t', `Uji Cetak MantaPrint - ${displayName}`, pdfPath]);
+        try { fs.unlinkSync(pdfPath); } catch {}
       } else {
         const textContent = `MantaPrint Hub Test Page\nPrinter: ${displayName}\nQueue: ${targetQueue}\nDate: ${new Date().toISOString()}\n`;
-        const tempText = `/tmp/testpage_${targetQueue}.txt`;
+        const tempText = `/tmp/testpage_${targetQueue}_${process.pid}_${Date.now()}.txt`;
         fs.writeFileSync(tempText, textContent, 'utf8');
         printRes = await runCmd('lp', ['-d', targetQueue, '-t', 'Test Page', tempText]);
+        try { fs.unlinkSync(tempText); } catch {}
       }
 
       await invalidateCacheAndBroadcast();

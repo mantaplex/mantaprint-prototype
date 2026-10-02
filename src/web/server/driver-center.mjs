@@ -30,7 +30,7 @@ export const REGISTRY_PATH = '/etc/mantaprint/drivers.json';
 export const DRIVER_INDEX_PATH = '/var/cache/cups/mantaprint_drivers.json';
 export const SANE_HWDB_PATH = '/usr/lib/udev/hwdb.d/20-sane.hwdb';
 export const PPD_DIR = '/usr/share/cups/model/mantaprint-uploads';
-export const FOO2ZJS_FW_DIRS = ['/usr/share/foo2zjs/firmware', '/etc/foo2zjs/firmware'];
+export const FOO2ZJS_FW_DIRS = ['/usr/share/foo2zjs/firmware', '/etc/foo2zjs/firmware', '/lib/firmware/hp'];
 export const UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
 const TOOL_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 
@@ -380,12 +380,19 @@ export async function inspectDeb(filePath) {
   };
 }
 
-export async function installDeb(filePath, { log = () => {} } = {}) {
+export async function installDeb(filePath, { pkgName = '', log = () => {} } = {}) {
   log(`dpkg -i ${path.basename(filePath)}`);
   let r = await run('dpkg', ['-i', filePath], { timeoutMs: 15 * 60 * 1000, onLine: log });
   if (r.code !== 0) {
     log('dpkg reported missing dependencies; trying apt-get -f install (needs internet)');
     r = await run('apt-get', ['-f', 'install', '-y', '--no-install-recommends'], { timeoutMs: 15 * 60 * 1000, onLine: log });
+  }
+  if (r.code === 0 && pkgName) {
+    const q = await run('dpkg-query', ['-W', '-f=${db:Status-Status}', pkgName], { timeoutMs: 5000 });
+    if (q.code !== 0 || q.stdout.trim() !== 'installed') {
+      log(`Package ${pkgName} is not in installed state after dependency resolution (status: ${q.stdout.trim() || 'removed'})`);
+      return { ok: false, code: 'deps_unresolved', exit_code: 1 };
+    }
   }
   return { ok: r.code === 0, exit_code: r.code };
 }
@@ -528,7 +535,7 @@ export const HP_FIRMWARE = {
   '1000': 'sihp1000.dl', '1005': 'sihp1005.dl', '1018': 'sihp1018.dl', '1020': 'sihp1020.dl',
   P1005: 'sihpP1005.dl', P1007: 'sihpP1005.dl', P1006: 'sihpP1006.dl', P1008: 'sihpP1006.dl', P1505: 'sihpP1505.dl'
 };
-export const HP_FIRMWARE_DIRS = ['/mnt/data/firmware/hp', '/var/cache/mantaprint/firmware/hp', '/usr/share/foo2zjs/firmware', '/etc/foo2zjs/firmware'];
+export const HP_FIRMWARE_DIRS = ['/mnt/data/firmware/hp', '/var/cache/mantaprint/firmware/hp', '/usr/share/foo2zjs/firmware', '/etc/foo2zjs/firmware', '/lib/firmware/hp'];
 
 /** Lower-cased names of firmware files present (non-empty) in any of the known directories. */
 export function presentHpFirmware(dirs = HP_FIRMWARE_DIRS) {

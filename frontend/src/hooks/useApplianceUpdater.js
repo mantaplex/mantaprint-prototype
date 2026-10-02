@@ -164,6 +164,11 @@ export function useApplianceUpdater() {
     es.addEventListener('state', (e) => {
       try {
         const data = JSON.parse(e.data);
+        if (data.state === 'FAILED') {
+          isUpdatingRef.current = false;
+          isRestartingRef.current = false;
+          setIsRestartingAppliance(false);
+        }
         if (isUpdatingRef.current || isRestartingRef.current) {
           if (data.state === 'COMPLETED' || data.state === 'RESTARTING') {
             setUpdaterState('COMPLETED');

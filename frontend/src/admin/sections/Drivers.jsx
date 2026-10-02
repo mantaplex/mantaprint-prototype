@@ -536,7 +536,8 @@ export default function Drivers({ showToast }) {
       if (r && r.success === false) showToast?.(errorText(r), 'error');
       else showToast?.(okMsg, 'success');
     } catch (e) {
-      let parsed = null; try { parsed = JSON.parse(e.message); } catch {}
+      let parsed = (e?.body && typeof e.body === 'object') ? e.body : null;
+      if (!parsed) { try { parsed = JSON.parse(e.message); } catch {} }
       showToast?.(parsed ? errorText(parsed) : e.message, 'error');
     } finally { setActing(false); load(); }
   }, [errorText, load, showToast]);

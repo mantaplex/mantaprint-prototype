@@ -10,6 +10,7 @@ import { acquireScan, printBlob } from '../engine/hubClient.js';
 import { renderPageBlob, renderPagePixels, composeKtp2in1 } from '../engine/renderClient.js';
 import { renderToCanvas, decodeBlob, mainThreadCanvasFactory } from '../engine/render.js';
 import { detectSkewAngle } from '../../utils/documentProcessor.js';
+import { copyTextToClipboard } from '../../shell/api.js';
 import { exportPagesToPdf } from '../engine/pdfExport.js';
 import { pagesToText, pagesToDocx } from '../engine/textExport.js';
 import { encodeMultiPageTiff } from '../engine/tiff.js';
@@ -239,7 +240,9 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
   const ocrMissingIds = (ids) => ids.filter((id) => { const p = pages.find((x) => x.id === id); return p && ocrState(p) !== 'done'; });
 
   const copyText = async (text) => {
-    try { await navigator.clipboard.writeText(text); showToast?.(t('studio.ocr.copied'), 'success'); } catch { showToast?.('Clipboard blocked', 'error'); }
+    const ok = await copyTextToClipboard(text);
+    if (ok) showToast?.(t('studio.ocr.copied'), 'success');
+    else showToast?.('Clipboard blocked', 'error');
   };
 
   // ---- import ------------------------------------------------------------------
@@ -570,6 +573,7 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
 
   useEffect(() => {
     const onKey = (e) => {
+      if (exportOpen || printOpen || sigPadOpen) return;
       const tag = (e.target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
       const mod = e.ctrlKey || e.metaKey;

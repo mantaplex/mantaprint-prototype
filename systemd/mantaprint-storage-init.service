@@ -11,8 +11,6 @@ ExecStart=/usr/local/sbin/mantaprint-storage-init.sh
 RemainAfterExit=yes
 TimeoutSec=60
 NoNewPrivileges=yes
-ProtectControlGroups=yes
-ProtectKernelTunables=yes
 StandardOutput=journal
 StandardError=journal
 

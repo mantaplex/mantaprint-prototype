@@ -89,31 +89,69 @@ class ConfigManager {
     }
   }
 
+  mergeWithDefaults(parsed = {}) {
+    const safe = parsed && typeof parsed === 'object' ? parsed : {};
+    const updates = { ...DEFAULT_CONFIG.updates, ...(safe.updates || {}), current_version: INSTALLED_VERSION };
+    if (!updates.update_available) updates.latest_version = INSTALLED_VERSION;
+    return {
+      ...DEFAULT_CONFIG,
+      ...safe,
+      version: INSTALLED_VERSION,
+      ntp: { ...DEFAULT_CONFIG.ntp, ...(safe.ntp || {}) },
+      admin: { ...DEFAULT_CONFIG.admin, ...(safe.admin || {}) },
+      scanner: { ...DEFAULT_CONFIG.scanner, ...(safe.scanner || {}) },
+      updates
+    };
+  }
+
   loadConfig() {
-    try {
-      if (fs.existsSync(this.configPath)) {
+    if (fs.existsSync(this.configPath)) {
+      try {
         const raw = fs.readFileSync(this.configPath, 'utf8');
         const parsed = JSON.parse(raw);
-        // The version fields in config.json are informational only: the installed
-        // version always comes from version.json so a stale config never reports an old release.
-        const updates = { ...DEFAULT_CONFIG.updates, ...(parsed.updates || {}), current_version: INSTALLED_VERSION };
-        if (!updates.update_available) updates.latest_version = INSTALLED_VERSION;
-        return { ...DEFAULT_CONFIG, ...parsed, version: INSTALLED_VERSION, updates };
+        return this.mergeWithDefaults(parsed);
+      } catch (err) {
+        console.warn('[ConfigManager] Error reading config file, backing up corrupt file:', err.message);
+        try {
+          fs.copyFileSync(this.configPath, `${this.configPath}.corrupt-${Date.now()}`);
+        } catch {}
+        const bakPath = `${this.configPath}.bak`;
+        if (fs.existsSync(bakPath)) {
+          try {
+            const bakParsed = JSON.parse(fs.readFileSync(bakPath, 'utf8'));
+            const recovered = this.mergeWithDefaults(bakParsed);
+            this.cachedConfig = recovered;
+            this.saveConfig(recovered);
+            return recovered;
+          } catch {}
+        }
       }
-    } catch (err) {
-      console.warn('[ConfigManager] Error reading config file, using defaults:', err.message);
     }
+    this.cachedConfig = { ...DEFAULT_CONFIG };
     this.saveConfig(DEFAULT_CONFIG);
-    return { ...DEFAULT_CONFIG };
+    return this.mergeWithDefaults(DEFAULT_CONFIG);
   }
 
   saveConfig(newConfig) {
     try {
-      const merged = { ...this.cachedConfig, ...newConfig, version: INSTALLED_VERSION };
+      const base = this.cachedConfig || DEFAULT_CONFIG;
+      const next = newConfig && typeof newConfig === 'object' ? newConfig : {};
+      const merged = {
+        ...base,
+        ...next,
+        version: INSTALLED_VERSION,
+        ntp: next.ntp ? { ...(base.ntp || DEFAULT_CONFIG.ntp), ...next.ntp } : (base.ntp || DEFAULT_CONFIG.ntp),
+        admin: next.admin ? { ...(base.admin || DEFAULT_CONFIG.admin), ...next.admin } : (base.admin || DEFAULT_CONFIG.admin),
+        scanner: next.scanner ? { ...(base.scanner || DEFAULT_CONFIG.scanner), ...next.scanner } : (base.scanner || DEFAULT_CONFIG.scanner),
+        updates: next.updates ? { ...(base.updates || DEFAULT_CONFIG.updates), ...next.updates } : (base.updates || DEFAULT_CONFIG.updates)
+      };
       const dir = path.dirname(this.configPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-      const tempPath = path.join(dir, `.config.json.tmp.${Date.now()}`);
+      const tempPath = path.join(dir, `.config.json.tmp.${process.pid}.${Date.now()}`);
       fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2), 'utf8');
+      if (fs.existsSync(this.configPath)) {
+        try { fs.copyFileSync(this.configPath, `${this.configPath}.bak`); } catch {}
+      }
       fs.renameSync(tempPath, this.configPath);
       this.cachedConfig = merged;
       return true;

@@ -4,6 +4,6 @@
 # 1. Hotplug: Block partition or disk added (executed in host mount namespace via systemd)
 ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", KERNEL=="mmcblk*p*|sd*[0-9]|nvme*p*", TAG+="systemd", ENV{SYSTEMD_WANTS}="mantaprint-storage-hotplug@%k.service"
 
-# 2. Hot-unplug: Device removed
-ACTION=="remove", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", KERNEL=="mmcblk*p*|sd*[0-9]|nvme*p*", TAG+="systemd", ENV{SYSTEMD_WANTS}="mantaprint-storage-unplug@%k.service"
-ACTION=="remove", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="mmcblk[0-9]|sd[a-z]|nvme[0-9]n[0-9]", TAG+="systemd", ENV{SYSTEMD_WANTS}="mantaprint-storage-unplug@%k.service"
+# 2. Hot-unplug: Device removed (udev ignores SYSTEMD_WANTS on remove events, so trigger systemctl directly)
+ACTION=="remove", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", KERNEL=="mmcblk*p*|sd*[0-9]|nvme*p*", RUN+="/usr/bin/systemctl --no-block start mantaprint-storage-unplug@%k.service"
+ACTION=="remove", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="mmcblk[0-9]|sd[a-z]|nvme[0-9]n[0-9]", RUN+="/usr/bin/systemctl --no-block start mantaprint-storage-unplug@%k.service"

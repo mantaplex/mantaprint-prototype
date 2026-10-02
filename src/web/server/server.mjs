@@ -35,6 +35,15 @@ import { getHplipPluginStatus, hpPluginHint, installPluginFile, RUN_MAX_BYTES as
 import * as driverCenter from './driver-center.mjs';
 import * as lockdown from './lockdown.mjs';
 import { directConnect } from './direct-connect.mjs';
+import {
+  MIME_TYPES,
+  registerSseClient,
+  writeSseBroadcast,
+  streamToFileWithLimit,
+  sliceFileRange,
+  streamFileResponse,
+  resolveStaticAsset
+} from './lib/http-guards.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,13 +116,6 @@ function resolveScanFilePath(filename) {
   const pTmp = path.join('/tmp', safeName);
   if (fs.existsSync(pTmp)) return pTmp;
   return null;
-}
-
-// 60-Second Periodic Garbage Collection (V8 Heap Budget Tuning)
-if (typeof global.gc === 'function') {
-  setInterval(() => {
-    try { global.gc(); } catch {}
-  }, 60000);
 }
 
 // Unified Scan Artifact Detection Helper (Zero-Trace tmpfs Ephemeral Storage)
@@ -758,7 +760,7 @@ function matchScannerProfile(model, vendor, devId) {
 async function checkBlankPage(imagePath) {
   const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
     ? '/opt/mantaprint/image_processor.py'
-    : path.resolve(__dirname, '../../image_processor.py');
+    : path.resolve(__dirname, '../image_processor.py');
 
   const res = await runCmd('/usr/bin/python3', [
     procPath,
@@ -2093,7 +2095,7 @@ class PrintJobTracker extends EventEmitter {
       if (active.length > 0 || this.lastActiveCount > 0) {
         cachedStatus = null;
         lastStatusFetch = 0;
-        getOrFetchStatus(true).then(broadcastSse).catch(() => {});
+        getOrFetchStatus(true).catch(() => {});
       }
       this.lastActiveCount = active.length;
 
@@ -2112,6 +2114,9 @@ function startActivePrintJobWatcher() {
   jobTracker.startWatcher();
 }
 
+let avahiRestartBackoffMs = 15000;
+let nextAvahiRestartAt = 0;
+
 async function probePrinterTelemetry() {
   const connectedUsbPrinters = getConnectedUsbPrinters();
 
@@ -2123,9 +2128,15 @@ async function probePrinterTelemetry() {
     runCmd('lpstat', ['-o'])
   ]);
 
-  // Self-heal Avahi mDNS daemon if inactive or crashed
-  if (avahiActive.stdout.trim() !== 'active') {
-    console.warn('[!] Avahi mDNS daemon is inactive or crashed. Auto-reviving avahi-daemon...');
+  // Self-heal Avahi mDNS daemon only if it crashed ('failed'), with exponential backoff
+  const avahiState = avahiActive.stdout.trim();
+  if (avahiState === 'active') {
+    avahiRestartBackoffMs = 15000;
+    nextAvahiRestartAt = 0;
+  } else if (avahiState === 'failed' && Date.now() >= nextAvahiRestartAt) {
+    console.warn(`[!] Avahi mDNS daemon is in failed state. Attempting revive (backoff ${Math.round(avahiRestartBackoffMs / 1000)}s)...`);
+    nextAvahiRestartAt = Date.now() + avahiRestartBackoffMs;
+    avahiRestartBackoffMs = Math.min(avahiRestartBackoffMs * 2, 300000);
     runCmd('systemctl', ['restart', 'avahi-daemon']).catch(() => {});
   }
 
@@ -2879,6 +2890,8 @@ async function handleNetworkIpChange(newIp) {
   }
 }
 
+let ipPollInterval = null;
+
 function startNetworkIpWatcher() {
   // 1. Instant kernel netlink event monitor via 'ip monitor address link'
   try {
@@ -2906,11 +2919,13 @@ function startNetworkIpWatcher() {
     console.warn('[!] Failed to initialize kernel netlink address monitor:', e.message);
   }
 
-  // 2. Periodic polling safeguard (every 2000ms) to guarantee sync across link flaps
-  setInterval(() => {
-    const currentIp = getIpAddress();
-    handleNetworkIpChange(currentIp);
-  }, 2000);
+  // 2. Periodic polling safeguard (every 2000ms) registered once across restarts
+  if (!ipPollInterval) {
+    ipPollInterval = setInterval(() => {
+      const currentIp = getIpAddress();
+      handleNetworkIpChange(currentIp);
+    }, 2000);
+  }
 }
 
 // Single-flight in-flight collapsing with Stale-While-Revalidate (instant response)
@@ -2946,19 +2961,7 @@ async function getOrFetchStatus(forceFresh = false) {
 }
 
 function broadcastSse(data) {
-  const jsonStr = JSON.stringify(redactStatusForPublic(data));
-  const msg = `data: ${jsonStr}\n\n`;
-  for (const client of sseClients) {
-    try {
-      if (client.writableEnded || client.destroyed) {
-        sseClients.delete(client);
-      } else {
-        client.write(msg);
-      }
-    } catch {
-      sseClients.delete(client);
-    }
-  }
+  writeSseBroadcast(sseClients, redactStatusForPublic(data));
 }
 
 // Periodic heartbeat / telemetry push to all SSE listeners with overlap guard
@@ -3021,20 +3024,6 @@ function parseJsonBody(raw) {
     return null;
   }
 }
-
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.wasm': 'application/wasm',
-  '.gz': 'application/gzip'
-};
 
 // Admin Authentication State
 function getEffectiveAdminConfig() {
@@ -3448,8 +3437,8 @@ const server = http.createServer(async (req, res) => {
             res.write(`data: ${JSON.stringify(redactStatusForPublic(snapshot))}\n\n`);
           }
         } catch {}
-      });
-      sseClients.add(res);
+      }).catch(() => {});
+      registerSseClient(sseClients, res);
 
       const cleanup = () => {
         sseClients.delete(res);
@@ -4590,7 +4579,7 @@ const server = http.createServer(async (req, res) => {
 
       const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
         ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+        : path.resolve(__dirname, '../image_processor.py');
 
       let blankPagesDiscarded = 0;
       let discardedPages = [];
@@ -4887,7 +4876,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
         ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+        : path.resolve(__dirname, '../image_processor.py');
 
       const args = [
         'enhance',
@@ -4943,7 +4932,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
         ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+        : path.resolve(__dirname, '../image_processor.py');
 
       for (let i = 0; i < pages.length; i++) {
         const p = pages[i];
@@ -5079,7 +5068,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
         ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+        : path.resolve(__dirname, '../image_processor.py');
 
       const args = [
         'ktp-2in1',
@@ -5209,25 +5198,28 @@ im.save('${p2Path}', 'JPEG', quality=90)
       else if (safeName.endsWith('.jpg') || safeName.endsWith('.jpeg')) contentType = 'image/jpeg';
       else if (safeName.endsWith('.tiff') || safeName.endsWith('.tif')) contentType = 'image/tiff';
 
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Content-Disposition': `inline; filename="${safeName}"`,
-        'Cache-Control': 'no-cache'
-      });
-
-      const stream = fs.createReadStream(filePath);
-      stream.pipe(res);
-
-      if (shouldWipe) {
-        res.on('finish', () => {
-          try {
-            if (fs.existsSync(filePath)) {
-              secureShredFile(filePath);
-              console.log('[Storage/Privacy] Zero-trace auto-wiped document after download:', safeName);
-            }
-          } catch {}
-        });
-      }
+      await streamFileResponse(
+        req,
+        res,
+        filePath,
+        {
+          'Content-Type': contentType,
+          'Content-Disposition': `inline; filename="${safeName}"`,
+          'Cache-Control': 'no-cache'
+        },
+        {
+          onComplete: shouldWipe
+            ? () => {
+                try {
+                  if (fs.existsSync(filePath)) {
+                    secureShredFile(filePath);
+                    console.log('[Storage/Privacy] Zero-trace auto-wiped document after download:', safeName);
+                  }
+                } catch {}
+              }
+            : undefined
+        }
+      );
       return;
     }
 
@@ -5364,11 +5356,11 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       if (fs.existsSync(pdfPath)) {
-        res.writeHead(200, {
+        await streamFileResponse(req, res, pdfPath, {
           'Content-Type': 'application/pdf',
-          'Content-Disposition': 'inline; filename="mantaprint-test-page.pdf"'
+          'Content-Disposition': 'inline; filename="mantaprint-test-page.pdf"',
+          'Cache-Control': 'no-cache'
         });
-        fs.createReadStream(pdfPath).pipe(res);
       } else {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Test page could not be generated' }));
@@ -6526,256 +6518,240 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const tempRawPath = path.join(SPOOL_TEMP_DIR, `mantaprint_raw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.dat`);
       const tempFinalPath = path.join(SPOOL_TEMP_DIR, `mantaprint_prn_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.dat`);
-      const fileStream = fs.createWriteStream(tempRawPath);
-
-      let totalBytes = 0;
-      let exceeded = false;
-      let aborted = false;
 
       const cleanupFiles = () => {
         try { if (fs.existsSync(tempRawPath)) fs.unlinkSync(tempRawPath); } catch {}
         try { if (fs.existsSync(tempFinalPath)) fs.unlinkSync(tempFinalPath); } catch {}
       };
 
-      req.on('data', chunk => {
-        totalBytes += chunk.length;
-        if (totalBytes > MAX_UPLOAD_BYTES) {
-          exceeded = true;
-          req.pause();
-          cleanupFiles();
+      try {
+        await streamToFileWithLimit(req, tempRawPath, MAX_UPLOAD_BYTES);
+      } catch (streamErr) {
+        cleanupFiles();
+        if (streamErr?.code === 'LIMIT_EXCEEDED') {
           if (!res.headersSent) {
             res.writeHead(413, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, message: 'Ukuran berkas melebihi batas 25MB.' }));
           }
+          return;
         }
-      });
-
-      req.on('aborted', () => {
-        aborted = true;
-        cleanupFiles();
-      });
-
-      req.pipe(fileStream);
-
-      fileStream.on('finish', async () => {
-        if (exceeded || aborted) return;
-        try {
-          const stats = fs.statSync(tempRawPath);
-          if (stats.size === 0) {
-            cleanupFiles();
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Berkas kosong (0 bytes).' }));
-            return;
-          }
-
-          let docName = req.headers['x-document-name'] || '';
-          try { docName = decodeURIComponent(docName); } catch {}
-          const contentType = req.headers['content-type'] || '';
-
-          if (contentType.includes('multipart/form-data')) {
-            const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
-            const boundary = boundaryMatch ? boundaryMatch[1].trim().replace(/^["']|["']$/g, '') : null;
-
-            if (boundary) {
-              // Read first 8KB to find multipart header
-              const headLen = Math.min(stats.size, 8192);
-              const headFd = fs.openSync(tempRawPath, 'r');
-              const headBuf = Buffer.alloc(headLen);
-              fs.readSync(headFd, headBuf, 0, headLen, 0);
-              fs.closeSync(headFd);
-
-              const headerEndIdx = headBuf.indexOf('\r\n\r\n');
-              if (headerEndIdx !== -1) {
-                const headerText = headBuf.toString('binary', 0, headerEndIdx);
-                const fnMatch = headerText.match(/filename="([^"]+)"/i);
-                if (fnMatch) docName = fnMatch[1];
-
-                const fileStart = headerEndIdx + 4;
-
-                // Read last 4KB to find footer boundary
-                const tailLen = Math.min(stats.size, 4096);
-                const tailFd = fs.openSync(tempRawPath, 'r');
-                const tailBuf = Buffer.alloc(tailLen);
-                fs.readSync(tailFd, tailBuf, 0, tailLen, Math.max(0, stats.size - tailLen));
-                fs.closeSync(tailFd);
-
-                const footerIdx = tailBuf.lastIndexOf(`--${boundary}`);
-                let fileEnd = stats.size;
-                if (footerIdx !== -1) {
-                  const tailOffset = Math.max(0, stats.size - tailLen);
-                  fileEnd = tailOffset + footerIdx;
-                  // Strip preceding CRLF if present
-                  if (fileEnd >= 2) {
-                    const checkFd = fs.openSync(tempRawPath, 'r');
-                    const crlfBuf = Buffer.alloc(2);
-                    fs.readSync(checkFd, crlfBuf, 0, 2, fileEnd - 2);
-                    fs.closeSync(checkFd);
-                    if (crlfBuf.toString() === '\r\n') {
-                      fileEnd -= 2;
-                    } else if (crlfBuf[1] === 0x0A) {
-                      fileEnd -= 1;
-                    }
-                  }
-                }
-
-                if (fileEnd > fileStart) {
-                  // Stream slice to tempFinalPath without loading entire payload into RAM
-                  await new Promise((resolvePipe, rejectPipe) => {
-                    const rStream = fs.createReadStream(tempRawPath, { start: fileStart, end: fileEnd - 1 });
-                    const wStream = fs.createWriteStream(tempFinalPath);
-                    rStream.pipe(wStream);
-                    wStream.on('finish', resolvePipe);
-                    wStream.on('error', rejectPipe);
-                  });
-                } else {
-                  fs.copyFileSync(tempRawPath, tempFinalPath);
-                }
-              } else {
-                fs.copyFileSync(tempRawPath, tempFinalPath);
-              }
-            } else {
-              fs.copyFileSync(tempRawPath, tempFinalPath);
-            }
-          } else {
-            // Raw binary upload
-            fs.copyFileSync(tempRawPath, tempFinalPath);
-          }
-
-          try { fs.unlinkSync(tempRawPath); } catch {}
-
-          if (!docName) docName = 'Dokumen Klien';
-
-          // Extract printer target from query, headers, or default queue
-          const requestedPrinter = url.searchParams.get('printer') || req.headers['x-printer-queue'];
-          const targetPrinter = resolveTargetQueue(requestedPrinter);
-          if (!targetPrinter) {
-            cleanupFiles();
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Tidak ada printer aktif yang terhubung.' }));
-            return;
-          }
-
-          // Dynamic lp options
-          const lpArgs = ['-d', targetPrinter];
-
-          const copies = parseInt(req.headers['x-print-copies'] || url.searchParams.get('copies') || '1', 10);
-          if (copies > 1 && copies <= 100) {
-            lpArgs.push('-n', String(copies));
-          }
-
-          const rawMedia = (req.headers['x-print-media'] || url.searchParams.get('media') || 'A4').trim();
-          if (/^[a-zA-Z0-9_\-]+$/.test(rawMedia)) {
-            lpArgs.push('-o', `media=${rawMedia}`);
-          }
-
-          const rawOrientation = (req.headers['x-print-orientation'] || url.searchParams.get('orientation') || '').trim();
-          if (rawOrientation === 'landscape' || rawOrientation === 'portrait') {
-            lpArgs.push('-o', rawOrientation);
-          }
-
-          const rawDuplex = (req.headers['x-print-duplex'] || url.searchParams.get('duplex') || '').trim();
-          if (rawDuplex === 'two-sided-long-edge' || rawDuplex === 'two-sided-short-edge') {
-            lpArgs.push('-o', `sides=${rawDuplex}`);
-          }
-
-          const rawPageRanges = (req.headers['x-print-page-ranges'] || url.searchParams.get('page_ranges') || '').trim();
-          if (/^[\d,-]+$/.test(rawPageRanges)) {
-            lpArgs.push('-o', `page-ranges=${rawPageRanges}`);
-          }
-
-          lpArgs.push('-o', 'fit-to-page');
-          lpArgs.push('--', tempFinalPath);
-
-          const printRes = await runCmd('lp', lpArgs, 15000);
-          cleanupFiles();
-
-          const success = printRes.code === 0;
-          if (!success) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              success: false,
-              state: 'error',
-              message: `Gagal mengirim ke antrean printer: ${printRes.stderr || printRes.stdout}`
-            }));
-            return;
-          }
-
-          const match = (printRes.stdout || '').match(/request id is ([^\s]+)/i);
-          const jobId = match ? match[1] : `${targetPrinter}-${Date.now() % 100000}`;
-          const numericId = parseInt((jobId.match(/-(\d+)$/) || [])[1] || '0', 10);
-
-          const jobRecord = jobTracker.registerJob({
-            id: jobId,
-            printer: targetPrinter,
-            title: docName,
-            user: req.socket.remoteAddress || 'client',
-            size: stats.size
-          });
-          const jobToken = crypto.randomBytes(16).toString('hex');
-          jobTracker.updateJob(jobId, { cancel_token: jobToken });
-
-          const shouldWait = url.searchParams.get('wait') === 'true' ||
-                             url.searchParams.get('sync') === 'true' ||
-                             url.searchParams.get('sync') === '1' ||
-                             req.headers['x-wait-job'] === 'true';
-
-          if (shouldWait) {
-            const finalJob = await jobTracker.waitForJob(jobId, 60000);
-            const isSuccess = finalJob.state === 'completed';
-            res.writeHead(isSuccess ? 200 : (finalJob.state === 'error' ? 502 : 504), { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              success: isSuccess,
-              job_id: finalJob.id,
-              job_token: jobToken,
-              id: finalJob.numeric_id,
-              printer: targetPrinter,
-              title: docName,
-              state: finalJob.state,
-              status_message: finalJob.status_message,
-              error: finalJob.error,
-              duration_ms: finalJob.duration_ms,
-              poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
-              events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
-              message: isSuccess 
-                ? `Dokumen "${docName}" berhasil dicetak pada ${targetPrinter}!`
-                : `Pencetakan tidak tuntas: ${finalJob.status_message}`
-            }));
-            return;
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            job_id: jobId,
-            id: numericId,
-            printer: targetPrinter,
-            title: docName,
-            state: jobRecord.state,
-            status_message: jobRecord.status_message,
-            poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
-            events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
-            wait_url: `/api/jobs/${encodeURIComponent(jobId)}/wait`,
-            job_token: jobToken,
-            message: `Dokumen "${docName}" berhasil dikirim ke antrean ${targetPrinter}. Sedang dicetak.`
-          }));
-        } catch (uploadErr) {
-          cleanupFiles();
-          console.error('[Upload Error]', uploadErr);
-          if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: `Kesalahan pemrosesan berkas: ${uploadErr.message}` }));
-          }
+        if (streamErr?.code === 'ECONNRESET' || req.aborted || req.destroyed) {
+          return;
         }
-      });
-
-      fileStream.on('error', err => {
-        cleanupFiles();
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: `Gagal menulis berkas sementara: ${err.message}` }));
+          res.end(JSON.stringify({ success: false, message: `Gagal menulis berkas sementara: ${streamErr.message}` }));
         }
-      });
+        return;
+      }
 
+      try {
+        const stats = fs.statSync(tempRawPath);
+        if (stats.size === 0) {
+          cleanupFiles();
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Berkas kosong (0 bytes).' }));
+          return;
+        }
+
+        let docName = req.headers['x-document-name'] || '';
+        try { docName = decodeURIComponent(docName); } catch {}
+        const contentType = req.headers['content-type'] || '';
+        let slicedMultipart = false;
+
+        if (contentType.includes('multipart/form-data')) {
+          const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
+          const boundary = boundaryMatch ? boundaryMatch[1].trim().replace(/^["']|["']$/g, '') : null;
+
+          if (boundary) {
+            // Read first 8KB to find multipart header
+            const headLen = Math.min(stats.size, 8192);
+            const headFd = fs.openSync(tempRawPath, 'r');
+            const headBuf = Buffer.alloc(headLen);
+            try {
+              fs.readSync(headFd, headBuf, 0, headLen, 0);
+            } finally {
+              fs.closeSync(headFd);
+            }
+
+            const headerEndIdx = headBuf.indexOf('\r\n\r\n');
+            if (headerEndIdx !== -1) {
+              const headerText = headBuf.toString('binary', 0, headerEndIdx);
+              const fnMatch = headerText.match(/filename="([^"]+)"/i);
+              if (fnMatch) docName = fnMatch[1];
+
+              const fileStart = headerEndIdx + 4;
+
+              // Read last 4KB to find footer boundary
+              const tailLen = Math.min(stats.size, 4096);
+              const tailFd = fs.openSync(tempRawPath, 'r');
+              const tailBuf = Buffer.alloc(tailLen);
+              try {
+                fs.readSync(tailFd, tailBuf, 0, tailLen, Math.max(0, stats.size - tailLen));
+              } finally {
+                fs.closeSync(tailFd);
+              }
+
+              const footerIdx = tailBuf.lastIndexOf(`--${boundary}`);
+              let fileEnd = stats.size;
+              if (footerIdx !== -1) {
+                const tailOffset = Math.max(0, stats.size - tailLen);
+                fileEnd = tailOffset + footerIdx;
+                // Strip preceding CRLF if present
+                if (fileEnd >= 2) {
+                  const checkFd = fs.openSync(tempRawPath, 'r');
+                  const crlfBuf = Buffer.alloc(2);
+                  try {
+                    fs.readSync(checkFd, crlfBuf, 0, 2, fileEnd - 2);
+                  } finally {
+                    fs.closeSync(checkFd);
+                  }
+                  if (crlfBuf.toString() === '\r\n') {
+                    fileEnd -= 2;
+                  } else if (crlfBuf[1] === 0x0A) {
+                    fileEnd -= 1;
+                  }
+                }
+              }
+
+              if (fileEnd > fileStart) {
+                await sliceFileRange(tempRawPath, tempFinalPath, fileStart, fileEnd - 1);
+                slicedMultipart = true;
+              }
+            }
+          }
+        }
+
+        if (slicedMultipart) {
+          try { fs.unlinkSync(tempRawPath); } catch {}
+        } else {
+          // Move in place within the same tmpfs directory instead of duplicating up to 25MB
+          fs.renameSync(tempRawPath, tempFinalPath);
+        }
+
+        if (!docName) docName = 'Dokumen Klien';
+
+        // Extract printer target from query, headers, or default queue
+        const requestedPrinter = url.searchParams.get('printer') || req.headers['x-printer-queue'];
+        const targetPrinter = resolveTargetQueue(requestedPrinter);
+        if (!targetPrinter) {
+          cleanupFiles();
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Tidak ada printer aktif yang terhubung.' }));
+          return;
+        }
+
+        // Dynamic lp options
+        const lpArgs = ['-d', targetPrinter];
+
+        const copies = parseInt(req.headers['x-print-copies'] || url.searchParams.get('copies') || '1', 10);
+        if (copies > 1 && copies <= 100) {
+          lpArgs.push('-n', String(copies));
+        }
+
+        const rawMedia = (req.headers['x-print-media'] || url.searchParams.get('media') || 'A4').trim();
+        if (/^[a-zA-Z0-9_\-]+$/.test(rawMedia)) {
+          lpArgs.push('-o', `media=${rawMedia}`);
+        }
+
+        const rawOrientation = (req.headers['x-print-orientation'] || url.searchParams.get('orientation') || '').trim();
+        if (rawOrientation === 'landscape' || rawOrientation === 'portrait') {
+          lpArgs.push('-o', rawOrientation);
+        }
+
+        const rawDuplex = (req.headers['x-print-duplex'] || url.searchParams.get('duplex') || '').trim();
+        if (rawDuplex === 'two-sided-long-edge' || rawDuplex === 'two-sided-short-edge') {
+          lpArgs.push('-o', `sides=${rawDuplex}`);
+        }
+
+        const rawPageRanges = (req.headers['x-print-page-ranges'] || url.searchParams.get('page_ranges') || '').trim();
+        if (/^[\d,-]+$/.test(rawPageRanges)) {
+          lpArgs.push('-o', `page-ranges=${rawPageRanges}`);
+        }
+
+        lpArgs.push('-o', 'fit-to-page');
+        lpArgs.push('--', tempFinalPath);
+
+        const printRes = await runCmd('lp', lpArgs, 15000);
+        cleanupFiles();
+
+        const success = printRes.code === 0;
+        if (!success) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            state: 'error',
+            message: `Gagal mengirim ke antrean printer: ${printRes.stderr || printRes.stdout}`
+          }));
+          return;
+        }
+
+        const match = (printRes.stdout || '').match(/request id is ([^\s]+)/i);
+        const jobId = match ? match[1] : `${targetPrinter}-${Date.now() % 100000}`;
+        const numericId = parseInt((jobId.match(/-(\d+)$/) || [])[1] || '0', 10);
+
+        const jobRecord = jobTracker.registerJob({
+          id: jobId,
+          printer: targetPrinter,
+          title: docName,
+          user: req.socket.remoteAddress || 'client',
+          size: stats.size
+        });
+        const jobToken = crypto.randomBytes(16).toString('hex');
+        jobTracker.updateJob(jobId, { cancel_token: jobToken });
+
+        const shouldWait = url.searchParams.get('wait') === 'true' ||
+                           url.searchParams.get('sync') === 'true' ||
+                           url.searchParams.get('sync') === '1' ||
+                           req.headers['x-wait-job'] === 'true';
+
+        if (shouldWait) {
+          const finalJob = await jobTracker.waitForJob(jobId, 60000);
+          const isSuccess = finalJob.state === 'completed';
+          res.writeHead(isSuccess ? 200 : (finalJob.state === 'error' ? 502 : 504), { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: isSuccess,
+            job_id: finalJob.id,
+            job_token: jobToken,
+            id: finalJob.numeric_id,
+            printer: targetPrinter,
+            title: docName,
+            state: finalJob.state,
+            status_message: finalJob.status_message,
+            error: finalJob.error,
+            duration_ms: finalJob.duration_ms,
+            poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
+            events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
+            message: isSuccess 
+              ? `Dokumen "${docName}" berhasil dicetak pada ${targetPrinter}!`
+              : `Pencetakan tidak tuntas: ${finalJob.status_message}`
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          job_id: jobId,
+          id: numericId,
+          printer: targetPrinter,
+          title: docName,
+          state: jobRecord.state,
+          status_message: jobRecord.status_message,
+          poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
+          events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
+          wait_url: `/api/jobs/${encodeURIComponent(jobId)}/wait`,
+          job_token: jobToken,
+          message: `Dokumen "${docName}" berhasil dikirim ke antrean ${targetPrinter}. Sedang dicetak.`
+        }));
+      } catch (uploadErr) {
+        cleanupFiles();
+        console.error('[Upload Error]', uploadErr);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: `Kesalahan pemrosesan berkas: ${uploadErr.message}` }));
+        }
+      }
       return;
     }
 
@@ -7467,59 +7443,19 @@ im.save('${p2Path}', 'JPEG', quality=90)
     }
 
     // --- STATIC ASSET SERVING (SPA) & STRICT PATH TRAVERSAL GUARD ---
-    const normalizedPath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
-    const resolvedPath = path.normalize(path.resolve(DIST_DIR, normalizedPath));
-
-    // Guard: strictly ensure requested file stays within DIST_DIR
-    if (!resolvedPath.startsWith(DIST_DIR)) {
-      res.writeHead(403, { 'Content-Type': 'text/plain' });
-      res.end('Forbidden');
+    const resolvedAsset = resolveStaticAsset(DIST_DIR, pathname, req.headers);
+    if (resolvedAsset.status === 304) {
+      res.writeHead(304, resolvedAsset.headers);
+      res.end();
       return;
     }
-
-    let filePath = resolvedPath;
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-      const dirIndex = path.join(filePath, 'index.html');
-      if (fs.existsSync(dirIndex)) {
-        filePath = dirIndex;
-      } else {
-        filePath = path.join(DIST_DIR, 'index.html');
-      }
-    } else if (!fs.existsSync(filePath)) {
-      if (pathname.startsWith('/hdmi')) {
-        const hdmiFile = path.join(DIST_DIR, 'hdmi', 'index.html');
-        filePath = fs.existsSync(hdmiFile) ? hdmiFile : path.join(DIST_DIR, 'index.html');
-      } else if (pathname.startsWith('/scanner')) {
-        const scannerFile = path.join(DIST_DIR, 'scanner', 'index.html');
-        filePath = fs.existsSync(scannerFile) ? scannerFile : path.join(DIST_DIR, 'index.html');
-      } else {
-        filePath = path.join(DIST_DIR, 'index.html');
-      }
-    }
-
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      const stream = fs.createReadStream(filePath);
-
-      let cacheControl = 'no-cache, must-revalidate';
-      if (ext === '.html' || normalizedPath === 'sw.js' || normalizedPath === 'manifest.json') {
-        cacheControl = 'no-cache, no-store, must-revalidate';
-      } else if (normalizedPath.startsWith('ocr/')) {
-        // OCR engine and language data live under a versioned folder and never change in place.
-        cacheControl = 'public, max-age=31536000, immutable';
-      }
-
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Cache-Control': cacheControl
-      });
-      stream.pipe(res);
+    if (resolvedAsset.status !== 200 || !resolvedAsset.filePath) {
+      res.writeHead(resolvedAsset.status, resolvedAsset.headers);
+      res.end(resolvedAsset.body || 'Not Found');
       return;
     }
-
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+    await streamFileResponse(req, res, resolvedAsset.filePath, resolvedAsset.headers);
+    return;
   } catch (globalErr) {
     console.error('[!] Global request handler error:', globalErr);
     if (!res.headersSent) {

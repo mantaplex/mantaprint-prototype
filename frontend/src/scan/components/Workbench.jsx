@@ -10,6 +10,7 @@ import { acquireScan, printBlob } from '../engine/hubClient.js';
 import { renderPageBlob, renderPagePixels, composeKtp2in1 } from '../engine/renderClient.js';
 import { renderToCanvas, decodeBlob, mainThreadCanvasFactory } from '../engine/render.js';
 import { detectSkewAngle } from '../../utils/documentProcessor.js';
+import { copyTextToClipboard } from '../../shell/api.js';
 import { exportPagesToPdf } from '../engine/pdfExport.js';
 import { pagesToText, pagesToDocx } from '../engine/textExport.js';
 import { encodeMultiPageTiff } from '../engine/tiff.js';
@@ -88,6 +89,13 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
   const dragRecorded = useRef(false);
   const initialFilesHandled = useRef(false);
   const clipboard = useRef(null);
+  const prefsLoaded = useRef(false);
+  const unmountedRef = useRef(false);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
 
   const activePage = useMemo(() => pages.find((p) => p.id === activeId) || null, [pages, activeId]);
   const activeIndex = pages.findIndex((p) => p.id === activeId);
@@ -96,23 +104,29 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
 
   // ---- persisted preferences ---------------------------------------------------
   useEffect(() => {
+    let active = true;
     (async () => {
-      const saved = await db.getSetting('scanSettings');
+      const [saved, savedDpi, opts, sigs, ocr] = await Promise.all([
+        db.getSetting('scanSettings'),
+        db.getSetting('ktpDpi'),
+        db.getSetting('toolOptions'),
+        db.getSetting('signatures'),
+        db.getSetting('ocrPrefs')
+      ]);
+      if (!active) return;
       if (saved) setScanSettings((s) => ({ ...s, ...saved }));
-      const savedDpi = await db.getSetting('ktpDpi');
       if (savedDpi) setKtpDpi(savedDpi);
-      const opts = await db.getSetting('toolOptions');
       if (opts) setToolOpts((o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { ...v, ...(opts[k] || {}) }])));
-      const sigs = await db.getSetting('signatures');
       if (Array.isArray(sigs)) setSignatures(sigs);
-      const ocr = await db.getSetting('ocrPrefs');
       if (ocr) setOcrPrefs((p) => ({ ...p, ...ocr }));
+      prefsLoaded.current = true;
     })();
+    return () => { active = false; };
   }, []);
-  useEffect(() => { db.setSetting('scanSettings', scanSettings); }, [scanSettings]);
-  useEffect(() => { db.setSetting('ktpDpi', ktpDpi); }, [ktpDpi]);
-  useEffect(() => { db.setSetting('toolOptions', toolOpts); }, [toolOpts]);
-  useEffect(() => { db.setSetting('ocrPrefs', ocrPrefs); }, [ocrPrefs]);
+  useEffect(() => { if (prefsLoaded.current) db.setSetting('scanSettings', scanSettings); }, [scanSettings]);
+  useEffect(() => { if (prefsLoaded.current) db.setSetting('ktpDpi', ktpDpi); }, [ktpDpi]);
+  useEffect(() => { if (prefsLoaded.current) db.setSetting('toolOptions', toolOpts); }, [toolOpts]);
+  useEffect(() => { if (prefsLoaded.current) db.setSetting('ocrPrefs', ocrPrefs); }, [ocrPrefs]);
   useEffect(() => { if (doc?.preset) setPresetId(doc.preset); }, [doc?.preset]);
 
   // Keep an active page
@@ -197,20 +211,20 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
     let done = 0;
     await Promise.all(fresh.map(async (id) => {
       try {
-        const res = await ocrPage(() => studio.getPageRecord(id), {
+        const res = await ocrPage(() => (unmountedRef.current ? null : studio.getPageRecord(id)), {
           lang: ocrPrefs.lang,
-          onProgress: (v) => setOcrProgress((p) => ({ ...p, [id]: v }))
+          onProgress: (v) => { if (!unmountedRef.current) setOcrProgress((p) => ({ ...p, [id]: v })); }
         });
-        if (studio.getPageRecord(id)) { studio.setOcr(id, res); done += 1; }
+        if (!unmountedRef.current && res && studio.getPageRecord(id)) { studio.setOcr(id, res); done += 1; }
       } catch (err) {
         console.error('[OCR]', err);
-        if (!silent) showToast?.(t('studio.ocr.failed', { msg: err?.message || '?' }), 'error');
+        if (!silent && !unmountedRef.current) showToast?.(t('studio.ocr.failed', { msg: err?.message || '?' }), 'error');
       } finally {
         ocrQueued.current.delete(id);
-        setOcrProgress((p) => { const n = { ...p }; delete n[id]; return n; });
+        if (!unmountedRef.current) setOcrProgress((p) => { const n = { ...p }; delete n[id]; return n; });
       }
     }));
-    if (!silent && done) showToast?.(t('studio.ocr.done', { n: done }), 'success');
+    if (!silent && done && !unmountedRef.current) showToast?.(t('studio.ocr.done', { n: done }), 'success');
   }, [studio, ocrPrefs.lang, showToast, t]);
 
   // Re-recognise pages whose geometry changed after OCR (auto mode)
@@ -226,7 +240,9 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
   const ocrMissingIds = (ids) => ids.filter((id) => { const p = pages.find((x) => x.id === id); return p && ocrState(p) !== 'done'; });
 
   const copyText = async (text) => {
-    try { await navigator.clipboard.writeText(text); showToast?.(t('studio.ocr.copied'), 'success'); } catch { showToast?.('Clipboard blocked', 'error'); }
+    const ok = await copyTextToClipboard(text);
+    if (ok) showToast?.(t('studio.ocr.copied'), 'success');
+    else showToast?.('Clipboard blocked', 'error');
   };
 
   // ---- import ------------------------------------------------------------------
@@ -264,7 +280,10 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
     const t1 = setTimeout(() => setScanPhase(t('studio.scan.phaseScanning')), 1200);
     const t2 = setTimeout(() => setScanPhase(t('studio.scan.phaseTransfer')), 7000);
     try {
-      const { blob } = await acquireScan(scanSettings);
+      const avail = Array.isArray(scanner?.available_devices) ? scanner.available_devices : [];
+      const validDevice = !scanSettings.deviceId || !avail.length || avail.some((d) => d.id === scanSettings.deviceId);
+      const effectiveSettings = validDevice ? scanSettings : { ...scanSettings, deviceId: '' };
+      const { blob } = await acquireScan(effectiveSettings);
       const preset = presetById(presetId);
       const role = nextKtpRole();
       const added = await studio.addPagesFromBlobs([{ blob, dpi: scanSettings.resolution, edits: preset.edits, role }], { source: 'scan' });
@@ -282,7 +301,7 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
       setScanPhase('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanning, scanSettings, presetId, studio, pages.length, showToast, t, afterAdd]);
+  }, [scanning, scanSettings, scanner?.available_devices, presetId, studio, pages.length, showToast, t, afterAdd]);
 
   const applyPreset = (id) => {
     const p = presetById(id);
@@ -302,13 +321,17 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
     if (!activeId) return;
     const record = !dragRecorded.current;
     dragRecorded.current = false;
-    if (Object.keys(patch).length) studio.updateEdits(activeId, patch, { record: true });
+    if (Object.keys(patch).length) studio.updateEdits(activeId, patch, { record });
     else if (record) studio.updateEdits(activeId, {}, { record: false });
   };
   const applyToneToAll = () => {
     if (!activePage) return;
     const { filter, bgClean, contrast, brightness } = activePage.edits;
-    for (const p of pages) if (p.id !== activeId) studio.updateEdits(p.id, { filter, bgClean, contrast, brightness }, { record: p === pages[0] });
+    const targets = pages.filter((p) => p.id !== activeId);
+    if (targets.length) {
+      studio.beginChange();
+      for (const p of targets) studio.updateEdits(p.id, { filter, bgClean, contrast, brightness }, { record: false });
+    }
     showToast?.(t('studio.toasts.appliedAll'), 'success');
   };
 
@@ -550,6 +573,7 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
 
   useEffect(() => {
     const onKey = (e) => {
+      if (exportOpen || printOpen || sigPadOpen) return;
       const tag = (e.target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
       const mod = e.ctrlKey || e.metaKey;
@@ -563,6 +587,7 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
       if (mod && key === 'v' && clipboard.current && activeId) {
         e.preventDefault();
         const copy = { ...translate(clipboard.current, 0.02, 0.02), id: annotationId() };
+        clipboard.current = copy;
         studio.addAnnotation(activeId, copy);
         setSelection({ pageId: activeId, id: copy.id });
         return;
@@ -596,7 +621,7 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
         const step = e.shiftKey ? 0.01 : 0.002;
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-        api.update(selection.pageId, selection.id, translate(selectedObject, dx, dy));
+        api.update(selection.pageId, selection.id, translate(selectedObject, dx, dy), { record: !e.repeat });
         return;
       }
       if (e.key === 'ArrowRight' || e.key === 'PageDown') { if (activeIndex < pages.length - 1) { e.preventDefault(); select(pages[activeIndex + 1].id); } return; }
@@ -842,6 +867,7 @@ export default function Workbench({ docId, initialTray = null, initialFiles = nu
           </Tray>
           <Tray open={openTray === 'crop' && Boolean(activePage)} onClose={cancelCrop} title={t('studio.tools.crop')} anchorRef={anchorRef} isPhone={isPhone} width={360} persistent>
             <CropTray
+              page={activePage}
               edits={activePage?.edits}
               draft={cropDraft}
               onDraft={setCropDraft}

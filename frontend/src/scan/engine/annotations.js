@@ -434,7 +434,10 @@ export { clamp01 };
 export async function paintAnnotations(canvas, list) {
   if (!list?.length) return;
   const images = await loadAnnotationImages(list);
-  const ctx = canvas.getContext('2d');
-  drawAnnotations(ctx, list, canvas.width, canvas.height, images);
-  for (const bmp of images.values()) bmp.close?.();
+  try {
+    const ctx = canvas.getContext('2d');
+    drawAnnotations(ctx, list, canvas.width, canvas.height, images);
+  } finally {
+    for (const bmp of images.values()) bmp.close?.();
+  }
 }

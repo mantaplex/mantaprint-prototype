@@ -24,10 +24,10 @@ export function exportableWords(page) {
 
 function encodable(font, text) {
   try {
-    return font.encodeText(text);
+    return { encoded: font.encodeText(text), text };
   } catch {
-    const folded = text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '?');
-    try { return font.encodeText(folded); } catch { return null; }
+    const folded = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '?');
+    try { return { encoded: font.encodeText(folded), text: folded }; } catch { return null; }
   }
 }
 
@@ -41,7 +41,12 @@ function addTextLayer(pdf, page, font, words, box) {
     // text extractors and viewers read as spaces.
     const enc = encodable(font, w.t);
     if (!enc) continue;
-    const natural = font.widthOfTextAtSize(w.t, size) || 1;
+    let natural = 1;
+    try {
+      natural = font.widthOfTextAtSize(enc.text, size) || 1;
+    } catch {
+      natural = Math.max(1, enc.text.length * size * 0.5);
+    }
     const target = w.w * box.w;
     const x = box.x + w.x * box.w;
     const y = box.y + box.h - (w.y + w.h) * box.h + w.h * box.h * 0.2;
@@ -51,7 +56,7 @@ function addTextLayer(pdf, page, font, words, box) {
       setTextRenderingMode(TextRenderingMode.Invisible),
       setCharacterSqueeze(Math.max(1, Math.min(1000, (100 * target) / natural))),
       moveText(x, y),
-      showText(enc),
+      showText(enc.encoded),
       endText()
     );
   }

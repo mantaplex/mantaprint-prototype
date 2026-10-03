@@ -27,14 +27,23 @@ import { hdmiNetworkEngine, remoteWizardEngine, validateEthernetConfig, applySys
 import { INSTALLED_VERSION } from './version.mjs';
 import { buildAirPrintProfile } from './airprint-profile.mjs';
 import { runComprehensiveMdnsCupsDiagnostic, getQuickMdnsStatus } from './network-diagnostics.mjs';
-import { configManager } from './config-manager.mjs';
+import { configManager, redactConfigForClient } from './config-manager.mjs';
 import { applianceUpdater, UpdaterState } from './updater.mjs';
-import { scannerHardwareLock, scannerPairingManager } from './scanner-pairing-manager.mjs';
+import { scannerHardwareLock } from './scanner-pairing-manager.mjs';
 import { getFirmwareStatus, getExtractionTools, pickWorkBase, freeBytes, receiveUpload, processFirmwareUpload } from './scanner-firmware.mjs';
 import { getHplipPluginStatus, hpPluginHint, installPluginFile, RUN_MAX_BYTES as HPLIP_RUN_MAX_BYTES, parseModelsDat as parseHplipModels, findModelEntry as findHplipModel, pluginNeed as hplipPluginNeed, MODELS_DAT as HPLIP_MODELS_DAT } from './hplip-plugin.mjs';
 import * as driverCenter from './driver-center.mjs';
 import * as lockdown from './lockdown.mjs';
 import { directConnect } from './direct-connect.mjs';
+import {
+  MIME_TYPES,
+  registerSseClient,
+  writeSseBroadcast,
+  streamToFileWithLimit,
+  sliceFileRange,
+  streamFileResponse,
+  resolveStaticAsset
+} from './lib/http-guards.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,13 +116,6 @@ function resolveScanFilePath(filename) {
   const pTmp = path.join('/tmp', safeName);
   if (fs.existsSync(pTmp)) return pTmp;
   return null;
-}
-
-// 60-Second Periodic Garbage Collection (V8 Heap Budget Tuning)
-if (typeof global.gc === 'function') {
-  setInterval(() => {
-    try { global.gc(); } catch {}
-  }, 60000);
 }
 
 // Unified Scan Artifact Detection Helper (Zero-Trace tmpfs Ephemeral Storage)
@@ -754,11 +756,19 @@ function matchScannerProfile(model, vendor, devId) {
   return null;
 }
 
+function resolveImageProcessorPath() {
+  if (fs.existsSync('/opt/mantaprint/core/image_processor.py')) {
+    return '/opt/mantaprint/core/image_processor.py';
+  }
+  if (fs.existsSync('/opt/mantaprint/image_processor.py')) {
+    return '/opt/mantaprint/image_processor.py';
+  }
+  return path.resolve(__dirname, '../../core/image_processor.py');
+}
+
 // Blank Page Detection Helper (calls image_processor.py detect-blank)
 async function checkBlankPage(imagePath) {
-  const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-    ? '/opt/mantaprint/image_processor.py'
-    : path.resolve(__dirname, '../../image_processor.py');
+  const procPath = resolveImageProcessorPath();
 
   const res = await runCmd('/usr/bin/python3', [
     procPath,
@@ -1171,7 +1181,7 @@ function syncAvahiInterfaceBinding(activeIface) {
   try {
     if (fs.existsSync(confPath)) {
       let content = fs.readFileSync(confPath, 'utf8');
-      const targetLine = `allow-interfaces=${activeIface}`;
+      const targetLine = `allow-interfaces=${activeIface},lo`;
       let newContent = content;
       if (/^\s*allow-interfaces\s*=/m.test(content)) {
         newContent = content.replace(/^\s*allow-interfaces\s*=.*$/m, targetLine);
@@ -1417,6 +1427,15 @@ function getPrinterReadiness() {
   return {};
 }
 
+function escapeXml(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr, ipAddr, isColor, isDuplex, isOnline) {
   const pdlStr = 'image/urf,image/pwg-raster,application/pdf';
   const urfStr = 'V1.4,W8,SRGB24,CP1,RS300-600';
@@ -1439,10 +1458,18 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     markerNamesStr = 'Canon Cartridge 325 (Black Toner)';
   }
 
+  const escServiceName = escapeXml(serviceName);
+  const escQueueName = escapeXml(queueName);
+  const escCleanTypeName = escapeXml(cleanTypeName);
+  const escProduct = escapeXml(model || queueName);
+  const escUuidStr = escapeXml(uuidStr);
+  const escIpAddr = escapeXml(ipAddr);
+  const escMarkerNamesStr = escapeXml(markerNamesStr);
+
   return `<?xml version="1.0" standalone="no"?>
 <!DOCTYPE service-group SYSTEM "avahi-service-group.dtd">
 <service-group>
-  <name replace-wildcards="yes">${serviceName}</name>
+  <name replace-wildcards="yes">${escServiceName}</name>
   <service>
     <type>_ipp._tcp</type>
     <subtype>_universal._sub._ipp._tcp</subtype>
@@ -1450,11 +1477,11 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <port>631</port>
     <txt-record>txtvers=1</txt-record>
     <txt-record>qtotal=1</txt-record>
-    <txt-record>rp=printers/${queueName}</txt-record>
-    <txt-record>ty=${cleanTypeName}</txt-record>
-    <txt-record>product=(${model || queueName})</txt-record>
-    <txt-record>UUID=${uuidStr}</txt-record>
-    <txt-record>adminurl=http://${ipAddr}:631/printers/${queueName}</txt-record>
+    <txt-record>rp=printers/${escQueueName}</txt-record>
+    <txt-record>ty=${escCleanTypeName}</txt-record>
+    <txt-record>product=(${escProduct})</txt-record>
+    <txt-record>UUID=${escUuidStr}</txt-record>
+    <txt-record>adminurl=http://${escIpAddr}:631/printers/${escQueueName}</txt-record>
     <txt-record>priority=0</txt-record>
     <txt-record>printer-state=${printerState}</txt-record>
     <txt-record>printer-state-reasons=${printerStateReasons}</txt-record>
@@ -1468,7 +1495,7 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <txt-record>TLS=1.2,1.3</txt-record>
     <txt-record>note=Universal Network Printer</txt-record>
     <txt-record>marker-levels=${markerLevelsStr}</txt-record>
-    <txt-record>marker-names=${markerNamesStr}</txt-record>
+    <txt-record>marker-names=${escMarkerNamesStr}</txt-record>
     <txt-record>marker-types=${markerTypesStr}</txt-record>
     <txt-record>marker-colors=${markerColorsStr}</txt-record>
   </service>
@@ -1479,11 +1506,11 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <port>631</port>
     <txt-record>txtvers=1</txt-record>
     <txt-record>qtotal=1</txt-record>
-    <txt-record>rp=printers/${queueName}</txt-record>
-    <txt-record>ty=${cleanTypeName}</txt-record>
-    <txt-record>product=(${model || queueName})</txt-record>
-    <txt-record>UUID=${uuidStr}</txt-record>
-    <txt-record>adminurl=https://${ipAddr}:631/printers/${queueName}</txt-record>
+    <txt-record>rp=printers/${escQueueName}</txt-record>
+    <txt-record>ty=${escCleanTypeName}</txt-record>
+    <txt-record>product=(${escProduct})</txt-record>
+    <txt-record>UUID=${escUuidStr}</txt-record>
+    <txt-record>adminurl=https://${escIpAddr}:631/printers/${escQueueName}</txt-record>
     <txt-record>priority=0</txt-record>
     <txt-record>printer-state=${printerState}</txt-record>
     <txt-record>printer-state-reasons=${printerStateReasons}</txt-record>
@@ -1497,7 +1524,7 @@ function generateAvahiXml(serviceName, queueName, cleanTypeName, model, uuidStr,
     <txt-record>TLS=1.2,1.3</txt-record>
     <txt-record>note=Universal Network Printer</txt-record>
     <txt-record>marker-levels=${markerLevelsStr}</txt-record>
-    <txt-record>marker-names=${markerNamesStr}</txt-record>
+    <txt-record>marker-names=${escMarkerNamesStr}</txt-record>
     <txt-record>marker-types=${markerTypesStr}</txt-record>
     <txt-record>marker-colors=${markerColorsStr}</txt-record>
   </service>
@@ -1521,15 +1548,12 @@ function writeAvahiService(queueName, displayName, model, isColor = true, isDupl
     const uuidStr = crypto.createHash('md5').update(`mantaprint-${queueName}`).digest('hex');
     const xml = generateAvahiXml(serviceName, queueName, cleanTypeName, model || queueName, uuidStr, net.ip, isColor, isDuplex, isOnline);
     
-    // Clean up duplicate legacy files for this queue
-    const files = fs.readdirSync(avahiDir);
+    // Clean up exact legacy alias file for this queue without deleting sibling queues (e.g. Queue_2)
     const targetFile = `mantaprint_${queueName}.service`;
     const targetPath = path.join(avahiDir, targetFile);
-
-    for (const f of files) {
-      if (f.includes(queueName) && f.endsWith('.service') && f !== targetFile) {
-        try { fs.unlinkSync(path.join(avahiDir, f)); } catch {}
-      }
+    const legacyFile = path.join(avahiDir, `heykprint_${queueName}.service`);
+    if (fs.existsSync(legacyFile)) {
+      try { fs.unlinkSync(legacyFile); } catch {}
     }
 
     let existing = '';
@@ -1550,11 +1574,11 @@ function removeAvahiService(queueName) {
   let removed = false;
   try {
     if (!fs.existsSync(avahiDir)) return false;
-    const files = fs.readdirSync(avahiDir);
-    for (const f of files) {
-      if ((f.startsWith(`mantaprint_${queueName}`) || f.startsWith(`heykprint_${queueName}`) || f.includes(queueName)) && f.endsWith('.service')) {
+    for (const f of [`mantaprint_${queueName}.service`, `heykprint_${queueName}.service`]) {
+      const fullPath = path.join(avahiDir, f);
+      if (fs.existsSync(fullPath)) {
         try {
-          fs.unlinkSync(path.join(avahiDir, f));
+          fs.unlinkSync(fullPath);
           removed = true;
         } catch {}
       }
@@ -1653,6 +1677,12 @@ function printerManagerScript() {
   return path.join(__dirname, '../../core/printer_manager.py');
 }
 
+function testPageGeneratorScript() {
+  if (fs.existsSync('/opt/mantaprint/core/test_page_generator.py')) return '/opt/mantaprint/core/test_page_generator.py';
+  if (fs.existsSync('/opt/mantaprint/test_page_generator.py')) return '/opt/mantaprint/test_page_generator.py';
+  return path.join(__dirname, '../../core/test_page_generator.py');
+}
+
 // ---- Network printer discovery & adoption (printer_manager.py discover-network) -------------
 let lastDiscovery = null;
 let discoveryInflight = null;
@@ -1738,6 +1768,7 @@ class PrintJobTracker extends EventEmitter {
     this.jobs = new Map();
     this.activeWatcherTimer = null;
     this.lastActiveCount = 0;
+    this.syncing = false;
   }
 
   registerJob({ id, printer, title, user = 'anonymous', size = 0 }) {
@@ -1767,9 +1798,19 @@ class PrintJobTracker extends EventEmitter {
     this.jobs.set(String(numericId), job);
 
     if (this.jobs.size > 200) {
-      const keys = Array.from(this.jobs.keys());
-      for (let i = 0; i < 40; i++) {
-        this.jobs.delete(keys[i]);
+      let evicted = 0;
+      for (const [k, j] of this.jobs.entries()) {
+        if (['completed', 'error', 'canceled', 'timeout', 'deleted'].includes(j.state)) {
+          this.jobs.delete(k);
+          evicted++;
+          if (evicted >= 40) break;
+        }
+      }
+      if (this.jobs.size > 200) {
+        const keys = Array.from(this.jobs.keys());
+        for (let i = 0; i < 40 && i < keys.length; i++) {
+          this.jobs.delete(keys[i]);
+        }
       }
     }
 
@@ -1791,7 +1832,7 @@ class PrintJobTracker extends EventEmitter {
   }
 
   getActiveJobs() {
-    return this.getAllJobs().filter(j => ['pending', 'processing', 'printing'].includes(j.state));
+    return this.getAllJobs().filter(j => ['pending', 'processing', 'printing', 'attention'].includes(j.state));
   }
 
   updateJob(idOrNumeric, patch) {
@@ -1874,6 +1915,8 @@ class PrintJobTracker extends EventEmitter {
   }
 
   async syncWithCups() {
+    if (this.syncing) return;
+    this.syncing = true;
     try {
       const [lpstatP, lpstatLp, lpstatJobs, lpstatCompleted] = await Promise.all([
         runCmd('lpstat', ['-p']),
@@ -1882,20 +1925,36 @@ class PrintJobTracker extends EventEmitter {
         runCmd('lpstat', ['-l', '-W', 'completed'])
       ]);
 
+      // Do not mark jobs completed/failed if CUPS daemon / lpstat failed to respond
+      if (lpstatP.code !== 0 && lpstatJobs.code !== 0) {
+        return;
+      }
+
       const now = Date.now();
 
-      // 1. Inspect lpstat -p for active printing job or stopped printer
+      // 1. Inspect lpstat -p per printer for active printing job or stopped printer
       let activePrintingJobId = null;
       let printerStateText = 'idle';
+      const printerStates = new Map();
+      const activePrintingByPrinter = new Map();
 
       for (const rawLine of lpstatP.stdout.split('\n')) {
         const line = rawLine.trim();
+        const matchPrinter = line.match(/^printer\s+([^\s]+)\s+/i);
+        const qName = matchPrinter ? matchPrinter[1] : null;
         const matchPrinting = line.match(/printer\s+([^\s]+)\s+now printing\s+([^\s\.]+)/i);
         if (matchPrinting) {
           activePrintingJobId = matchPrinting[2].trim();
           printerStateText = 'printing';
+          if (qName) {
+            printerStates.set(qName, 'printing');
+            activePrintingByPrinter.set(qName, activePrintingJobId);
+          }
         } else if (line.includes('disabled since') || line.includes('is stopped')) {
           printerStateText = 'stopped';
+          if (qName) printerStates.set(qName, 'stopped');
+        } else if (qName && line.includes('is idle')) {
+          printerStates.set(qName, 'idle');
         }
       }
 
@@ -1931,7 +1990,7 @@ class PrintJobTracker extends EventEmitter {
           if (!this.getJob(jId)) {
             this.registerJob({
               id: jId,
-              printer: jId.split('-')[0] || 'default',
+              printer: jId.replace(/-\d+$/, '') || 'default',
               user: headerMatch[2],
               size: parseInt(headerMatch[3], 10)
             });
@@ -1971,6 +2030,13 @@ class PrintJobTracker extends EventEmitter {
           continue;
         }
 
+        const jobPrinterState = (job.printer && printerStates.has(job.printer))
+          ? printerStates.get(job.printer)
+          : printerStateText;
+        const jobActivePrintingId = (job.printer && activePrintingByPrinter.has(job.printer))
+          ? activePrintingByPrinter.get(job.printer)
+          : activePrintingJobId;
+
         // Check if job is in CUPS completed log (by full ID or numeric ID)
         const compInfo = completedJobMap.get(job.id) || (job.numeric_id ? completedJobMap.get(String(job.numeric_id)) : null);
         if (compInfo) {
@@ -1999,8 +2065,8 @@ class PrintJobTracker extends EventEmitter {
         }
 
         const isInSpool = activeSpoolJobIds.has(job.id) || (job.numeric_id && activeSpoolJobIds.has(String(job.numeric_id)));
-        const isActivelyPrinting = (activePrintingJobId && (activePrintingJobId === job.id || activePrintingJobId === String(job.numeric_id))) ||
-                                   (!activePrintingJobId && isInSpool && printerStateText === 'printing');
+        const isActivelyPrinting = (jobActivePrintingId && (jobActivePrintingId === job.id || jobActivePrintingId === String(job.numeric_id))) ||
+                                   (!jobActivePrintingId && isInSpool && jobPrinterState === 'printing');
 
         // If printer attention / out-of-paper while job is active or in spool
         const hasMediaAttention = lpAlerts.some(a => a.toLowerCase().includes('media-needed') || a.toLowerCase().includes('media-empty')) ||
@@ -2041,7 +2107,7 @@ class PrintJobTracker extends EventEmitter {
 
         // If job is in spool
         if (isInSpool) {
-          if (printerStateText === 'stopped') {
+          if (jobPrinterState === 'stopped') {
             this.updateJob(job.id, {
               state: 'error',
               status_message: `Printer terhenti: ${lpAlerts.join(', ') || 'Printer offline atau ada kendala'}`,
@@ -2059,8 +2125,8 @@ class PrintJobTracker extends EventEmitter {
         }
 
         // Job has departed CUPS spool: if printer is idle or job submitted > 10s ago, conclude it
-        if (now - job.submitted_at > 10000 || (!isInSpool && !activePrintingJobId)) {
-          if (printerStateText === 'stopped' || lpAlerts.some(a => a.toLowerCase().includes('error') || a.toLowerCase().includes('stopped'))) {
+        if (now - job.submitted_at > 10000 || (!isInSpool && !jobActivePrintingId)) {
+          if (jobPrinterState === 'stopped' || lpAlerts.some(a => a.toLowerCase().includes('error') || a.toLowerCase().includes('stopped'))) {
             this.updateJob(job.id, {
               state: 'error',
               status_message: lpStatus || `Gagal mencetak: ${lpAlerts.join(', ') || 'Printer dihentikan oleh CUPS'}`,
@@ -2078,6 +2144,8 @@ class PrintJobTracker extends EventEmitter {
       }
     } catch (err) {
       console.warn('[!] Error syncing jobs with CUPS:', err.message);
+    } finally {
+      this.syncing = false;
     }
   }
 
@@ -2093,7 +2161,7 @@ class PrintJobTracker extends EventEmitter {
       if (active.length > 0 || this.lastActiveCount > 0) {
         cachedStatus = null;
         lastStatusFetch = 0;
-        getOrFetchStatus(true).then(broadcastSse).catch(() => {});
+        getOrFetchStatus(true).catch(() => {});
       }
       this.lastActiveCount = active.length;
 
@@ -2112,6 +2180,10 @@ function startActivePrintJobWatcher() {
   jobTracker.startWatcher();
 }
 
+let avahiRestartBackoffMs = 15000;
+let nextAvahiRestartAt = 0;
+const ippUsbFailures = new Map();
+
 async function probePrinterTelemetry() {
   const connectedUsbPrinters = getConnectedUsbPrinters();
 
@@ -2123,9 +2195,15 @@ async function probePrinterTelemetry() {
     runCmd('lpstat', ['-o'])
   ]);
 
-  // Self-heal Avahi mDNS daemon if inactive or crashed
-  if (avahiActive.stdout.trim() !== 'active') {
-    console.warn('[!] Avahi mDNS daemon is inactive or crashed. Auto-reviving avahi-daemon...');
+  // Self-heal Avahi mDNS daemon only if it crashed ('failed'), with exponential backoff
+  const avahiState = avahiActive.stdout.trim();
+  if (avahiState === 'active') {
+    avahiRestartBackoffMs = 15000;
+    nextAvahiRestartAt = 0;
+  } else if (avahiState === 'failed' && Date.now() >= nextAvahiRestartAt) {
+    console.warn(`[!] Avahi mDNS daemon is in failed state. Attempting revive (backoff ${Math.round(avahiRestartBackoffMs / 1000)}s)...`);
+    nextAvahiRestartAt = Date.now() + avahiRestartBackoffMs;
+    avahiRestartBackoffMs = Math.min(avahiRestartBackoffMs * 2, 300000);
     runCmd('systemctl', ['restart', 'avahi-daemon']).catch(() => {});
   }
 
@@ -2234,10 +2312,15 @@ async function probePrinterTelemetry() {
       ], 1500);
 
       if (ippRes.code === 0 && ippRes.stdout) {
+        ippUsbFailures.delete(qName);
         classification = 'active_usb';
         canDelete = false;
         qConn = true;
-        isPublished = true;
+        isPublished = pOverrides.is_published !== undefined ? Boolean(pOverrides.is_published) : true;
+        if (matchingQ && matchingQ.state === 'stopped') {
+          runCmd('cupsenable', [qName]).catch(() => {});
+          qState = 'idle';
+        }
         const out = ippRes.stdout;
         const mMM = out.match(/printer-make-and-model\s+\([^)]+\)\s*=\s*(.+)/);
         const mNames = out.match(/marker-names\s+\([^)]+\)\s*=\s*(.+)/);
@@ -2253,13 +2336,23 @@ async function probePrinterTelemetry() {
         if (mAlert) qAlert = mAlert[1].trim();
         if (mDevId) qDevId = mDevId[1].trim();
       } else {
-        classification = 'inactive_usb';
-        canDelete = true;
-        qConn = false;
-        qAlert = 'Printer USB sedang offline atau tidak merespons';
-        qState = 'disconnected';
-        isPublished = false;
-        runCmd('cupsdisable', ['-r', 'Printer offline atau dimatikan', qName]).catch(() => {});
+        const isBusyPrinting = qState === 'processing' || qState === 'printing';
+        const failCount = isBusyPrinting ? 0 : ((ippUsbFailures.get(qName) || 0) + 1);
+        ippUsbFailures.set(qName, failCount);
+        if (isBusyPrinting || failCount < 3) {
+          classification = 'active_usb';
+          canDelete = false;
+          qConn = true;
+          isPublished = pOverrides.is_published !== undefined ? Boolean(pOverrides.is_published) : true;
+        } else {
+          classification = 'inactive_usb';
+          canDelete = true;
+          qConn = false;
+          qAlert = 'Printer USB sedang offline atau tidak merespons';
+          qState = 'disconnected';
+          isPublished = false;
+          runCmd('cupsdisable', ['-r', 'Printer offline atau dimatikan', qName]).catch(() => {});
+        }
       }
     } else if (devUri.startsWith('usb://') || devUri.startsWith('mantaprint-usb://')) {
       protocol = 'usb';
@@ -2478,6 +2571,7 @@ async function probePrinterTelemetry() {
       const files = fs.readdirSync(avahiDir);
       let prunedAny = false;
       for (const f of files) {
+        if (f === 'mantaprint_web.service') continue;
         if ((f.startsWith('mantaprint_') || f.startsWith('heykprint_')) && f.endsWith('.service')) {
           const match = f.match(/^(?:mantaprint_|heykprint_)(.+)\.service$/);
           if (match && match[1]) {
@@ -2778,7 +2872,6 @@ async function probePrinterTelemetry() {
     },
     lockdown: lockdownSummary(),
     scanner_portal_enabled: configManager.getConfig()?.scanner?.portal_enabled !== false,
-    scanner_pwa_api_enabled: configManager.getConfig()?.scanner?.remote_pwa_api_enabled !== false,
     queues
   };
 
@@ -2818,9 +2911,7 @@ function startUsbHardwareWatcher() {
           }).catch(() => {});
 
           // 2. Trigger CUPS / Avahi dynamic synchronization in background
-          const genScript = fs.existsSync('/opt/mantaprint/printer_manager.py')
-            ? '/opt/mantaprint/printer_manager.py'
-            : path.join(__dirname, '../../core/printer_manager.py');
+          const genScript = printerManagerScript();
 
           if (fs.existsSync(genScript)) {
             runCmd('python3', [genScript], 10000)
@@ -2863,9 +2954,7 @@ async function handleNetworkIpChange(newIp) {
   }
 
   // 2. Trigger printer_manager.py to update Avahi DNS-SD XML service files on disk
-  const scriptPath = fs.existsSync('/opt/mantaprint/printer_manager.py')
-    ? '/opt/mantaprint/printer_manager.py'
-    : path.join(__dirname, '../../core/printer_manager.py');
+  const scriptPath = printerManagerScript();
   if (fs.existsSync(scriptPath)) {
     console.log(`[*] Triggering printer_manager to update Avahi mDNS service name with new IP (${newIp})...`);
     runCmd('/usr/bin/python3', [scriptPath], 10000)
@@ -2878,6 +2967,8 @@ async function handleNetworkIpChange(newIp) {
       .catch((e) => console.error('[!] Failed to execute printer_manager on IP change:', e));
   }
 }
+
+let ipPollInterval = null;
 
 function startNetworkIpWatcher() {
   // 1. Instant kernel netlink event monitor via 'ip monitor address link'
@@ -2906,11 +2997,13 @@ function startNetworkIpWatcher() {
     console.warn('[!] Failed to initialize kernel netlink address monitor:', e.message);
   }
 
-  // 2. Periodic polling safeguard (every 2000ms) to guarantee sync across link flaps
-  setInterval(() => {
-    const currentIp = getIpAddress();
-    handleNetworkIpChange(currentIp);
-  }, 2000);
+  // 2. Periodic polling safeguard (every 2000ms) registered once across restarts
+  if (!ipPollInterval) {
+    ipPollInterval = setInterval(() => {
+      const currentIp = getIpAddress();
+      handleNetworkIpChange(currentIp);
+    }, 2000);
+  }
 }
 
 // Single-flight in-flight collapsing with Stale-While-Revalidate (instant response)
@@ -2946,19 +3039,7 @@ async function getOrFetchStatus(forceFresh = false) {
 }
 
 function broadcastSse(data) {
-  const jsonStr = JSON.stringify(redactStatusForPublic(data));
-  const msg = `data: ${jsonStr}\n\n`;
-  for (const client of sseClients) {
-    try {
-      if (client.writableEnded || client.destroyed) {
-        sseClients.delete(client);
-      } else {
-        client.write(msg);
-      }
-    } catch {
-      sseClients.delete(client);
-    }
-  }
+  writeSseBroadcast(sseClients, redactStatusForPublic(data));
 }
 
 // Periodic heartbeat / telemetry push to all SSE listeners with overlap guard
@@ -2995,19 +3076,43 @@ async function readJsonBody(req, maxBytes = 64 * 1024) {
 function readBody(req, maxBytes = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let settled = false;
     const chunks = [];
+    const cleanup = () => {
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+      req.off('aborted', onAbort);
+    };
     const onData = (chunk) => {
       size += chunk.length;
       if (size > maxBytes) {
-        req.off('data', onData);
+        if (settled) return;
+        settled = true;
+        cleanup();
+        try { req.resume(); } catch {}
         reject(new Error('PAYLOAD_TOO_LARGE'));
         return;
       }
       chunks.push(chunk);
     };
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const onError = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+    const onAbort = () => onError(new Error('REQUEST_ABORTED'));
     req.on('data', onData);
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', (err) => reject(err));
+    req.on('end', onEnd);
+    req.on('error', onError);
+    req.once('aborted', onAbort);
   });
 }
 
@@ -3021,20 +3126,6 @@ function parseJsonBody(raw) {
     return null;
   }
 }
-
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.wasm': 'application/wasm',
-  '.gz': 'application/gzip'
-};
 
 // Admin Authentication State
 function getEffectiveAdminConfig() {
@@ -3448,8 +3539,8 @@ const server = http.createServer(async (req, res) => {
             res.write(`data: ${JSON.stringify(redactStatusForPublic(snapshot))}\n\n`);
           }
         } catch {}
-      });
-      sseClients.add(res);
+      }).catch(() => {});
+      registerSseClient(sseClients, res);
 
       const cleanup = () => {
         sseClients.delete(res);
@@ -3475,24 +3566,44 @@ const server = http.createServer(async (req, res) => {
     };
 
     // CUPS Web UI Reverse Proxy (/cups/* -> 127.0.0.1:631/*)
-    if (pathname.startsWith('/cups')) {
+    if (pathname === '/cups' || pathname.startsWith('/cups/')) {
+      if (!isAdminOrLocal(req)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan untuk akses CUPS.' }));
+        return;
+      }
       const targetPath = pathname.replace(/^\/cups/, '') || '/';
       const cupsUrl = `http://127.0.0.1:631${targetPath}${url.search}`;
-      
+      const forwardedHeaders = { ...req.headers, host: '127.0.0.1:631' };
+      delete forwardedHeaders['x-admin-token'];
+      delete forwardedHeaders['authorization'];
+
       const proxyReq = http.request(cupsUrl, {
         method: req.method,
-        headers: {
-          ...req.headers,
-          host: '127.0.0.1:631'
-        }
+        headers: forwardedHeaders
       }, (cupsRes) => {
         res.writeHead(cupsRes.statusCode, cupsRes.headers);
+        cupsRes.on('error', () => {
+          if (!res.writableEnded) res.destroy();
+        });
         cupsRes.pipe(res);
       });
 
+      proxyReq.setTimeout(30000, () => {
+        proxyReq.destroy(new Error('CUPS upstream timeout'));
+      });
+
       proxyReq.on('error', (err) => {
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
-        res.end('CUPS daemon unavailable: ' + err.message);
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'text/plain' });
+          res.end('CUPS daemon unavailable: ' + err.message);
+        } else if (!res.writableEnded) {
+          res.destroy();
+        }
+      });
+
+      req.once('close', () => {
+        if (!res.writableEnded) proxyReq.destroy();
       });
 
       req.pipe(proxyReq);
@@ -3502,22 +3613,42 @@ const server = http.createServer(async (req, res) => {
     // --- SCANNER & eSCL ROUTES ---
     // Reverse proxy eSCL (Apple AirScan & Mopria Scan) to local ipp-usb
     if (pathname.startsWith('/eSCL/')) {
+      const cfg = configManager.getConfig();
+      if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Layanan WebScan saat ini dinonaktifkan oleh Administrator.' }));
+        return;
+      }
+      const forwardedHeaders = { ...req.headers, host: 'localhost:60000' };
+      delete forwardedHeaders['x-admin-token'];
+      delete forwardedHeaders['authorization'];
+
       const proxyReq = http.request({
         hostname: '127.0.0.1',
         port: 60000,
         path: req.url,
         method: req.method,
-        headers: {
-          ...req.headers,
-          host: 'localhost:60000'
-        }
+        headers: forwardedHeaders
       }, (proxyRes) => {
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.on('error', () => {
+          if (!res.writableEnded) res.destroy();
+        });
         proxyRes.pipe(res);
       });
+      proxyReq.setTimeout(30000, () => {
+        proxyReq.destroy(new Error('eSCL upstream timeout'));
+      });
       proxyReq.on('error', () => {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Scanner eSCL endpoint offline.' }));
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Scanner eSCL endpoint offline.' }));
+        } else if (!res.writableEnded) {
+          res.destroy();
+        }
+      });
+      req.once('close', () => {
+        if (!res.writableEnded) proxyReq.destroy();
       });
       req.pipe(proxyReq);
       return;
@@ -3530,6 +3661,12 @@ const server = http.createServer(async (req, res) => {
     // These endpoints are kept only for API compatibility and are scheduled for removal.
     // They answer with RFC 8594 Deprecation/Sunset headers so any remaining caller is visible in logs.
     if (DEPRECATED_SCAN_ENDPOINTS.has(pathname)) {
+      const cfg = configManager.getConfig();
+      if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Layanan WebScan saat ini dinonaktifkan oleh Administrator.' }));
+        return;
+      }
       res.setHeader('Deprecation', 'true');
       res.setHeader('Sunset', DEPRECATED_SCAN_SUNSET);
       res.setHeader('Warning', '299 - "Deprecated: server-side scan processing moved to the client (MantaPageScan Studio)"');
@@ -3540,196 +3677,36 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ==========================================
-    // SCANNER PWA PAIRING, CLIENTS & MUTEX API
+    // SCANNER DISCOVERY & DEPRECATED PWA PAIRING ROUTES
     // ==========================================
 
-    // 1. Scanner Subnet Discovery & Probe (Zero-auth for fast subnet sweep)
     if (pathname === '/api/scanner/probe' && req.method === 'GET') {
       const cfg = configManager.getConfig();
       const status = scannerHardwareLock.getStatus();
       const networkIp = getIpAddress();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        hub_uuid: scannerPairingManager.getHubUuid(),
         hostname: os.hostname(),
         ip: networkIp || '127.0.0.1',
         version: getCurrentSystemVersion(),
         portal_enabled: cfg?.scanner?.portal_enabled !== false,
-        pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false,
         is_busy: status.is_busy,
-        busy_holder: status.is_busy ? (status.holder || 'Perangkat terhubung') : null
+        busy_holder: status.is_busy ? (status.holder || 'Sesi aktif') : null
       }));
       return;
     }
 
-    // 2. Generate Ephemeral Pairing Code (Admin Only)
-    if (pathname === '/api/scanner/pairing/generate' && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const hostHeader = req.headers.host || 'mantaprint.local';
-      const [hostName, hostPort] = hostHeader.split(':');
-      const networkIp = getIpAddress();
-      const code = scannerPairingManager.generatePairingCode(
-        hostName.includes('.local') ? hostName : 'mantaprint.local',
-        networkIp || '127.0.0.1',
-        parseInt(hostPort || '80', 10)
-      );
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, ...code }));
-      return;
-    }
-
-    // 3. Verify Pairing Code & Issue Durable Token (PWA Client)
-    if (pathname === '/api/scanner/pairing/verify' && req.method === 'POST') {
-      const cfg = configManager.getConfig();
-      if (cfg?.scanner?.remote_pwa_api_enabled === false) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error_code: 'ERR_PWA_API_DISABLED',
-          message: 'Akses Remote Scanner PWA dinonaktifkan oleh Administrator.'
-        }));
-        return;
-      }
-
-      let raw;
-      try {
-        raw = await readBody(req);
-      } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Payload tidak valid.' }));
-        return;
-      }
-
-      const parsed = parseJsonBody(raw) || {};
-      const clientIp = req.socket?.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
-      const result = scannerPairingManager.verifyPairing(parsed.pin || parsed.pairing_token, {
-        device_name: parsed.device_name,
-        platform: parsed.platform,
-        userAgent: req.headers['user-agent'],
-        ip: clientIp
+    if (pathname.startsWith('/api/scanner/pairing') || pathname.startsWith('/api/scanner/clients')) {
+      res.writeHead(410, {
+        'Content-Type': 'application/json',
+        Deprecation: 'true'
       });
-
-      if (!result.success) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
-
-      // Broadcast SSE event to admin console that client paired
-      broadcastSse({
-        type: 'scanner:client_paired',
-        client_id: result.client_id,
-        device_name: result.device_name,
-        ip: clientIp,
-        timestamp: new Date().toISOString()
-      });
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-      return;
-    }
-
-    // 4. List Paired Clients (Admin Only)
-    if (pathname === '/api/scanner/clients' && req.method === 'GET') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const clients = scannerPairingManager.listClients();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, clients, count: clients.length }));
-      return;
-    }
-
-    // 5. Revoke Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && pathname.endsWith('/revoke') && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const ok = scannerPairingManager.revokeClient(clientId, 'admin');
-      if (ok) {
-        broadcastSse({
-          type: 'scanner:client_revoked',
-          client_id: clientId,
-          timestamp: new Date().toISOString()
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Akses perangkat berhasil dicabut.' }));
-      } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Perangkat tidak ditemukan.' }));
-      }
-      return;
-    }
-
-    // 6. Reauthorize Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && pathname.endsWith('/reauthorize') && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const ok = scannerPairingManager.reauthorizeClient(clientId);
-      if (ok) {
-        broadcastSse({
-          type: 'scanner:client_reauthorized',
-          client_id: clientId,
-          timestamp: new Date().toISOString()
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Perangkat berhasil diotorisasi ulang.' }));
-      } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Perangkat tidak ditemukan.' }));
-      }
-      return;
-    }
-
-    // 7. Rename Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && pathname.endsWith('/rename') && req.method === 'POST') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const raw = await readBody(req);
-      const parsed = parseJsonBody(raw) || {};
-      const ok = scannerPairingManager.renameClient(clientId, parsed.device_name);
-      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: ok }));
-      return;
-    }
-
-    // 8. Delete Client (Admin Only)
-    if (pathname.startsWith('/api/scanner/clients/') && req.method === 'DELETE') {
-      if (!isAdminAuthenticated(req)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
-        return;
-      }
-      const parts = pathname.split('/');
-      const clientId = parts[4];
-      const ok = scannerPairingManager.deleteClient(clientId);
-      broadcastSse({
-        type: 'scanner:client_deleted',
-        client_id: clientId,
-        timestamp: new Date().toISOString()
-      });
-      res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: ok }));
+      res.end(JSON.stringify({
+        success: false,
+        deprecated: true,
+        error: 'gone',
+        message: 'Mobile Scanner PWA pairing has been deprecated. Use MantaPage Scan Studio at /scan.'
+      }));
       return;
     }
 
@@ -3918,7 +3895,7 @@ const server = http.createServer(async (req, res) => {
       const target = String(body.queue || item.target || '');
       const job = driverCenter.startJob(`install-${file.kind}`, file.name, async (log) => {
         if (file.kind === 'deb') {
-          const r = await driverCenter.installDeb(file.path, { log });
+          const r = await driverCenter.installDeb(file.path, { pkgName: file.info?.package || '', log });
           if (r.ok) {
             const keepDir = path.join(pickWorkBase().dir, 'drivers', 'deb');
             fs.mkdirSync(keepDir, { recursive: true, mode: 0o700 });
@@ -3953,7 +3930,7 @@ const server = http.createServer(async (req, res) => {
       });
       if (!job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return void res.end(JSON.stringify({ success: false, code: 'busy' })); }
       // The pending item is consumed once its job finishes; a multi-file archive stays until dropped.
-      if (item.kind === 'deb') setTimeout(() => { const j = driverCenter.getJob(); if (j && j.id === job.id && j.state !== 'running') driverCenter.dropPending(item.id); }, 20 * 60 * 1000).unref();
+      if (item.kind === 'deb') setTimeout(() => driverCenter.dropPending(item.id), 20 * 60 * 1000).unref();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, job: driverCenter.getJob() }));
       return;
@@ -4047,6 +4024,7 @@ const server = http.createServer(async (req, res) => {
       try { fileName = path.basename(decodeURIComponent(String(req.headers['x-file-name'] || ''))).slice(0, 200); } catch {}
       const base = pickWorkBase();
       const keep = path.join(base.dir, 'drivers', 'hplip');
+      let receivingHplipUpload = true;
       hplipPluginBusy = true;
       try {
         fs.mkdirSync(keep, { recursive: true, mode: 0o700 });
@@ -4058,14 +4036,20 @@ const server = http.createServer(async (req, res) => {
         }
         const upload = path.join(keep, 'upload.run');
         try { await receiveUpload(req, upload, maxBytes); } catch (err) { return reply(err.code === 'too_large' ? 413 : 400, { success: false, code: err.code === 'too_large' ? 'too_large' : 'upload_failed' }); }
+        // Release receive guard before starting the async job (startHplipPluginJob manages hplipPluginBusy itself)
+        receivingHplipUpload = false;
+        hplipPluginBusy = false;
         const job = startHplipPluginJob({ filePath: upload, fileName, ascPath: path.join(keep, 'pending.asc'), size: length });
-        if (!job) return reply(409, { success: false, code: 'busy' });
+        if (!job) {
+          try { fs.unlinkSync(upload); } catch {}
+          return reply(409, { success: false, code: 'busy' });
+        }
         return reply(200, { success: true, job });
       } catch (err) {
         console.error('[HPLIP plugin] Upload failed:', err.message);
         return reply(500, { success: false, code: 'install_failed' });
       } finally {
-        hplipPluginBusy = false;
+        if (receivingHplipUpload) hplipPluginBusy = false;
       }
     }
 
@@ -4143,14 +4127,13 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 10. Scanner Service Configuration (Portal & PWA API toggles)
+    // 10. Scanner Service Configuration (Scan Studio portal toggle)
     if (pathname === '/api/scanner/config' && req.method === 'GET') {
       const cfg = configManager.getConfig();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         success: true,
-        portal_enabled: cfg?.scanner?.portal_enabled !== false,
-        remote_pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false
+        portal_enabled: cfg?.scanner?.portal_enabled !== false
       }));
       return;
     }
@@ -4167,7 +4150,6 @@ const server = http.createServer(async (req, res) => {
       const updatedScannerCfg = {
         ...currentScannerCfg,
         portal_enabled: parsed.portal_enabled !== undefined ? !!parsed.portal_enabled : currentScannerCfg.portal_enabled !== false,
-        remote_pwa_api_enabled: parsed.remote_pwa_api_enabled !== undefined ? !!parsed.remote_pwa_api_enabled : currentScannerCfg.remote_pwa_api_enabled !== false,
         selected_device_id: parsed.selected_device_id !== undefined ? String(parsed.selected_device_id) : currentScannerCfg.selected_device_id
       };
       configManager.saveConfig({ scanner: updatedScannerCfg });
@@ -4203,107 +4185,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 10. Direct Zero-Footprint SANE Chunked Stream
     if (pathname === '/api/scanner/stream' && (req.method === 'GET' || req.method === 'POST')) {
-      const authHeader = req.headers['authorization'] || req.headers['x-mantaprint-token'] || url.searchParams.get('token');
-      const clientIp = req.socket?.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
-      const auth = scannerPairingManager.verifyClientToken(authHeader, clientIp);
-      if (!auth.valid && !isAdminAuthenticated(req)) {
-        res.writeHead(auth.code === 'ERR_CLIENT_REVOKED' ? 403 : 401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error_code: auth.code || 'ERR_UNAUTHORIZED',
-          message: auth.message || 'Autentikasi token diperlukan.',
-          action_required: auth.code === 'ERR_CLIENT_REVOKED' ? 'PURGE_LOCAL_CREDENTIALS' : 'REPAIR'
-        }));
-        return;
-      }
-
-      const clientName = auth?.client?.device_name || 'Stream Client';
-      const clientId = auth?.client?.client_id || 'direct';
-
-      const lock = scannerHardwareLock.acquire(clientId, clientName);
-      if (!lock.acquired) {
-        res.writeHead(423, { 
-          'Content-Type': 'application/json',
-          'Retry-After': String(lock.estimatedRemainingSec || 15)
-        });
-        res.end(JSON.stringify({
-          success: false,
-          error_code: 'SCANNER_BUSY',
-          message: lock.message,
-          holder: lock.holder,
-          elapsed_sec: lock.elapsedSec
-        }));
-        return;
-      }
-
-      const sc = await probeScannerTelemetry();
-      if (!sc.connected) {
-        scannerHardwareLock.release(clientId);
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Tidak ada scanner yang terhubung.' }));
-        return;
-      }
-
-      let resolutionNum = parseInt(url.searchParams.get('resolution') || '300', 10);
-      if (isNaN(resolutionNum) || resolutionNum < 75) resolutionNum = 150;
-      const validModes = ['Color', 'Gray', 'Lineart'];
-      const mode = validModes.includes(url.searchParams.get('mode')) ? url.searchParams.get('mode') : 'Color';
-      const maxDpi = mode === 'Color' ? 300 : 600;
-      resolutionNum = Math.min(resolutionNum, maxDpi);
-      const validFormats = ['jpeg', 'png', 'tiff', 'pnm'];
-      const format = validFormats.includes(url.searchParams.get('format')?.toLowerCase()) ? url.searchParams.get('format').toLowerCase() : 'jpeg';
-      const validSources = ['Flatbed', 'ADF Front', 'ADF Back', 'ADF Duplex'];
-      const sourceRaw = url.searchParams.get('source') || 'Flatbed';
-      const source = validSources.includes(sourceRaw) ? sourceRaw : 'Flatbed';
-
-      res.writeHead(200, {
-        'Content-Type': format === 'jpeg' ? 'image/jpeg' : 'image/x-portable-pixmap',
-        'Transfer-Encoding': 'chunked',
-        'X-Scanner-Model': sc.model || 'SANE Scanner',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Access-Control-Allow-Origin': '*'
+      res.writeHead(410, {
+        'Content-Type': 'application/json',
+        Deprecation: 'true'
       });
-
-      const args = [
-        '-d', sc.device_id,
-        `--resolution=${resolutionNum}`,
-        `--mode=${mode}`,
-        `--format=${format}`
-      ];
-      if (source && source !== 'Flatbed') {
-        args.push(`--source=${source}`);
-      }
-
-      const proc = spawn('scanimage', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-      scannerHardwareLock.registerActiveProcess(proc);
-
-      // Drain stderr to prevent pipe buffer deadlock
-      proc.stderr.resume();
-
-      proc.on('error', (err) => {
-        console.error('[ScannerStream] Failed to spawn scanimage:', err.message);
-        scannerHardwareLock.release(clientId);
-        if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Gagal menjalankan subsistem pemindai.' }));
-        }
-      });
-
-      proc.stdout.pipe(res);
-
-      req.on('close', () => {
-        if (!proc.killed) {
-          try { proc.kill('SIGTERM'); } catch {}
-          scannerHardwareLock.release(clientId);
-        }
-      });
-
-      proc.on('close', () => {
-        scannerHardwareLock.release(clientId);
-        res.end();
-      });
+      res.end(JSON.stringify({
+        success: false,
+        deprecated: true,
+        error: 'gone',
+        message: 'Mobile Scanner PWA stream has been deprecated. Use POST /api/scanner/scan from MantaPage Scan Studio (/scan).'
+      }));
       return;
     }
 
@@ -4369,7 +4261,6 @@ const server = http.createServer(async (req, res) => {
         scanners: sc?.available_devices || (sc?.connected ? [sc] : []),
         mutex: status,
         portal_enabled: cfg?.scanner?.portal_enabled !== false,
-        remote_pwa_api_enabled: cfg?.scanner?.remote_pwa_api_enabled !== false,
         paperSizes: SCAN_PAPER_SIZES,
         profiles: SCANNER_PROFILES.map(p => ({
           id: p.id,
@@ -4425,43 +4316,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Scanner Image Acquisition (WebScan & PWA Client)
+    // Scanner Image Acquisition (MantaPage Scan Studio /scan)
     if (pathname === '/api/scanner/scan' && req.method === 'POST') {
-      // Auth & Portal Permission Check
-      const tokenHeader = req.headers['authorization'] || req.headers['x-mantaprint-token'];
       const cfg = configManager.getConfig();
-      let clientInfo = null;
-
-      if (tokenHeader) {
-        const clientIp = req.socket?.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
-        const auth = scannerPairingManager.verifyClientToken(tokenHeader, clientIp);
-        if (!auth.valid) {
-          res.writeHead(auth.code === 'ERR_CLIENT_REVOKED' ? 403 : 401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: false,
-            error_code: auth.code || 'ERR_UNAUTHORIZED',
-            message: auth.message || 'Token tidak valid.',
-            action_required: auth.code === 'ERR_CLIENT_REVOKED' ? 'PURGE_LOCAL_CREDENTIALS' : 'REPAIR'
-          }));
-          return;
-        }
-        clientInfo = auth.client;
-      } else {
-        // Direct web access from /scan portal
-        if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: false,
-            error_code: 'ERR_PORTAL_DISABLED',
-            message: 'WebScan Direct Portal dinonaktifkan oleh Administrator.'
-          }));
-          return;
-        }
+      if (cfg?.scanner?.portal_enabled === false && !isAdminAuthenticated(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error_code: 'ERR_PORTAL_DISABLED',
+          message: 'WebScan Direct Portal dinonaktifkan oleh Administrator.'
+        }));
+        return;
       }
 
       // Hardware Mutex Lock
-      const lockHolderName = clientInfo?.device_name || 'WebScan Direct';
-      const lockHolderId = clientInfo?.client_id || 'direct_scan';
+      const lockHolderName = 'Scan Studio';
+      const lockHolderId = 'direct_scan';
       const lockAcquired = scannerHardwareLock.acquire(lockHolderId, lockHolderName);
       if (!lockAcquired.acquired) {
         res.writeHead(423, { 
@@ -4500,8 +4370,8 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // Allow specifying mock scanner profile for appliance test suite
-      if (parsed.mock && typeof parsed.mock === 'string') {
+      // Allow specifying mock scanner profile only for authenticated admin or test runner
+      if (parsed.mock && typeof parsed.mock === 'string' && (isAdminAuthenticated(req) || process.env.MANTAPRINT_ALLOW_MOCK === '1')) {
         const p = SCANNER_PROFILES.find(x => x.id === parsed.mock || x.model.toLowerCase().includes(parsed.mock.toLowerCase()));
         if (p) {
           sc = {
@@ -4527,7 +4397,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const isMockMode = Boolean(parsed.mock || sc.device_id?.includes(':mock:'));
+      const isMockMode = Boolean(sc.device_id?.includes(':mock:'));
       if (!sc.connected && !isMockMode) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, message: 'Tidak ada scanner yang terhubung.' }));
@@ -4551,10 +4421,12 @@ const server = http.createServer(async (req, res) => {
       // F4 / Folio: 215mm x 330mm, ID Card: 86mm x 54mm, A4: 210mm x 297mm
       let width = 210;
       let height = 297;
-      const requestedPaper = parsed.paperSize || parsed.paper_size;
-      if (requestedPaper && SCAN_PAPER_SIZES[requestedPaper]) {
-        width = SCAN_PAPER_SIZES[requestedPaper].width;
-        height = SCAN_PAPER_SIZES[requestedPaper].height;
+      const rawPaper = String(parsed.paperSize || parsed.paper_size || '');
+      const hasKnownPaper = Object.prototype.hasOwnProperty.call(SCAN_PAPER_SIZES, rawPaper);
+      const requestedPaper = hasKnownPaper ? rawPaper : '';
+      if (hasKnownPaper) {
+        width = SCAN_PAPER_SIZES[rawPaper].width;
+        height = SCAN_PAPER_SIZES[rawPaper].height;
       } else if (parsed.width && parsed.height) {
         const w = Number(parsed.width);
         const h = Number(parsed.height);
@@ -4588,9 +4460,7 @@ const server = http.createServer(async (req, res) => {
         source = 'ADF Front';
       }
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       let blankPagesDiscarded = 0;
       let discardedPages = [];
@@ -4601,19 +4471,23 @@ const server = http.createServer(async (req, res) => {
         // Appliance Simulation Engine for test verification without physical USB scanner
         const p1Name = `${scanId}_p1.jpg`;
         const p1Path = path.join(SCAN_STORAGE_DIR, p1Name);
-        const pxW = Math.round((width / 25.4) * resolution);
-        const pxH = Math.round((height / 25.4) * resolution);
+        const pxW = Math.max(64, Math.min(3600, Math.round((width / 25.4) * resolution)));
+        const pxH = Math.max(64, Math.min(4800, Math.round((height / 25.4) * resolution)));
+        const paperLabel = requestedPaper || 'A4';
 
-        // Generate Page 1 (valid document with content)
-        await runCmd('/usr/bin/python3', ['-c', `
-from PIL import Image, ImageDraw
-im = Image.new('RGB', (${pxW}, ${pxH}), (252, 252, 250))
-d = ImageDraw.Draw(im)
-d.rectangle([(20, 20), (${pxW}-20, ${pxH}-20)], outline=(120, 120, 120), width=2)
-d.text((50, 50), 'MantaPrint Scan Document [${source}] [${requestedPaper || "A4"}]', fill=(20, 20, 20))
-d.text((50, 80), 'Resolution: ${resolution} DPI | Dim: ${width}x${height} mm', fill=(40, 40, 40))
-im.save('${p1Path}', 'JPEG', quality=90)
-`]);
+        // Generate Page 1 (valid document with content) using argv instead of string interpolation
+        await runCmd('/usr/bin/python3', [
+          '-c',
+          'import sys; from PIL import Image, ImageDraw; w, h = int(sys.argv[1]), int(sys.argv[2]); im = Image.new("RGB", (w, h), (252, 252, 250)); d = ImageDraw.Draw(im); d.rectangle([(20, 20), (w - 20, h - 20)], outline=(120, 120, 120), width=2); d.text((50, 50), f"MantaPrint Scan Document [{sys.argv[3]}] [{sys.argv[4]}]", fill=(20, 20, 20)); d.text((50, 80), f"Resolution: {sys.argv[5]} DPI | Dim: {sys.argv[6]}x{sys.argv[7]} mm", fill=(40, 40, 40)); im.save(sys.argv[8], "JPEG", quality=90)',
+          String(pxW),
+          String(pxH),
+          source,
+          paperLabel,
+          String(resolution),
+          String(width),
+          String(height),
+          p1Path
+        ]);
 
         let generatedFiles = [p1Path];
 
@@ -4621,11 +4495,13 @@ im.save('${p1Path}', 'JPEG', quality=90)
         if (source === 'ADF Duplex') {
           const p2Name = `${scanId}_p2.jpg`;
           const p2Path = path.join(SCAN_STORAGE_DIR, p2Name);
-          await runCmd('/usr/bin/python3', ['-c', `
-from PIL import Image
-im = Image.new('RGB', (${pxW}, ${pxH}), (250, 250, 248))
-im.save('${p2Path}', 'JPEG', quality=90)
-`]);
+          await runCmd('/usr/bin/python3', [
+            '-c',
+            'import sys; from PIL import Image; im = Image.new("RGB", (int(sys.argv[1]), int(sys.argv[2])), (250, 250, 248)); im.save(sys.argv[3], "JPEG", quality=90)',
+            String(pxW),
+            String(pxH),
+            p2Path
+          ]);
           generatedFiles.push(p2Path);
 
           // Backend Blank Page Detection: Inspect back side (p2)
@@ -4885,9 +4761,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const enhId = `enh_${Date.now()}_${fileId}`;
       const outPath = path.join(SCAN_STORAGE_DIR, enhId);
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       const args = [
         'enhance',
@@ -4941,9 +4815,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const validFiles = [];
       const tempFilesToClean = [];
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       for (let i = 0; i < pages.length; i++) {
         const p = pages[i];
@@ -5077,9 +4949,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const outId = `ktp2in1_${Date.now()}.${fileExt}`;
       const outPath = path.join(SCAN_STORAGE_DIR, outId);
 
-      const procPath = fs.existsSync('/opt/mantaprint/image_processor.py')
-        ? '/opt/mantaprint/image_processor.py'
-        : path.resolve(__dirname, '../../image_processor.py');
+      const procPath = resolveImageProcessorPath();
 
       const args = [
         'ktp-2in1',
@@ -5148,6 +5018,11 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
     // Ephemeral Scan Session Manual Wipe
     if (pathname === '/api/scanner/wipe-session' && req.method === 'POST') {
+      if (!isAdminOrLocal(req)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Autentikasi administrator diperlukan.' }));
+        return;
+      }
       let count = 0;
       try {
         const targetDirs = [RAM_SCANS_DIR, SD_SCANS_DIR, '/tmp'];
@@ -5157,7 +5032,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
           for (const f of files) {
             if (isScanArtifact(f)) {
               try {
-                fs.unlinkSync(path.join(dir, f));
+                secureShredFile(path.join(dir, f));
                 count++;
               } catch {}
             }
@@ -5189,13 +5064,11 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const urlObj = new URL(req.url, 'http://127.0.0.1');
 
-      // Auth / Portal validation guard: Require open portal, admin auth, or valid client token
+      // Auth / Portal validation guard: Require open portal or admin auth
       const cfg = configManager.getConfig();
-      const tokenHeader = req.headers['authorization'] || req.headers['x-mantaprint-token'] || urlObj.searchParams.get('token');
       const isPortalOpen = cfg?.scanner?.portal_enabled !== false;
       const isAdmin = isAdminAuthenticated(req);
-      const isTokenValid = tokenHeader ? scannerPairingManager.verifyClientToken(tokenHeader).valid : false;
-      if (!isPortalOpen && !isAdmin && !isTokenValid) {
+      if (!isPortalOpen && !isAdmin) {
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         res.end('Akses berkas pindaian dibatasi oleh Administrator.');
         return;
@@ -5209,25 +5082,28 @@ im.save('${p2Path}', 'JPEG', quality=90)
       else if (safeName.endsWith('.jpg') || safeName.endsWith('.jpeg')) contentType = 'image/jpeg';
       else if (safeName.endsWith('.tiff') || safeName.endsWith('.tif')) contentType = 'image/tiff';
 
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Content-Disposition': `inline; filename="${safeName}"`,
-        'Cache-Control': 'no-cache'
-      });
-
-      const stream = fs.createReadStream(filePath);
-      stream.pipe(res);
-
-      if (shouldWipe) {
-        res.on('finish', () => {
-          try {
-            if (fs.existsSync(filePath)) {
-              secureShredFile(filePath);
-              console.log('[Storage/Privacy] Zero-trace auto-wiped document after download:', safeName);
-            }
-          } catch {}
-        });
-      }
+      await streamFileResponse(
+        req,
+        res,
+        filePath,
+        {
+          'Content-Type': contentType,
+          'Content-Disposition': `inline; filename="${safeName}"`,
+          'Cache-Control': 'no-cache'
+        },
+        {
+          onComplete: shouldWipe
+            ? () => {
+                try {
+                  if (fs.existsSync(filePath)) {
+                    secureShredFile(filePath);
+                    console.log('[Storage/Privacy] Zero-trace auto-wiped document after download:', safeName);
+                  }
+                } catch {}
+              }
+            : undefined
+        }
+      );
       return;
     }
 
@@ -5257,12 +5133,10 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       // Generate custom HeykPrint test page PDF
-      const pdfPath = `/tmp/mantaprint_testpage_${queue}.pdf`;
+      const pdfPath = `/tmp/mantaprint_testpage_${queue}_${process.pid}_${Date.now()}.pdf`;
       const displayName = cachedStatus?.printer?.display_name || queue.replace(/_/g, ' ');
 
-      const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
-        ? '/opt/mantaprint/test_page_generator.py'
-        : path.join(__dirname, '../../core/test_page_generator.py');
+      const genScript = testPageGeneratorScript();
 
       if (fs.existsSync(genScript)) {
         const currentLang = getCurrentSystemLanguage();
@@ -5274,8 +5148,13 @@ im.save('${p2Path}', 'JPEG', quality=90)
         }
       }
 
-      const printFile = fs.existsSync(pdfPath) ? pdfPath : '/usr/share/cups/data/testprint';
+      const hasGeneratedPdf = fs.existsSync(pdfPath);
+      const printFile = hasGeneratedPdf ? pdfPath : '/usr/share/cups/data/testprint';
+      const fileSize = fs.existsSync(printFile) ? fs.statSync(printFile).size : 0;
       const cmdRes = await runCmd('lp', ['-d', queue, '-o', 'fit-to-page', '-o', 'PageSize=A4', printFile]);
+      if (hasGeneratedPdf) {
+        try { fs.unlinkSync(pdfPath); } catch {}
+      }
       const success = cmdRes.code === 0;
 
       if (!success) {
@@ -5297,7 +5176,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
         printer: queue,
         title: 'Halaman Uji Coba MantaPrint',
         user: req.socket.remoteAddress || 'client',
-        size: fs.existsSync(printFile) ? fs.statSync(printFile).size : 0
+        size: fileSize
       });
 
       const shouldWait = url.searchParams.get('wait') === 'true' ||
@@ -5347,11 +5226,9 @@ im.save('${p2Path}', 'JPEG', quality=90)
     if ((pathname === '/api/printer/test-page/preview' || pathname === '/api/printer/test-page/pdf') && (req.method === 'GET' || req.method === 'HEAD')) {
       const queue = resolveTargetQueue() || 'Canon_LBP6030_6040_6018L';
       const displayName = cachedStatus?.printer?.display_name || queue.replace(/_/g, ' ');
-      const pdfPath = `/tmp/mantaprint_testpage_${queue}.pdf`;
+      const pdfPath = `/tmp/mantaprint_testpage_${queue}_${process.pid}_${Date.now()}.pdf`;
 
-      const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
-        ? '/opt/mantaprint/test_page_generator.py'
-        : path.join(__dirname, '../../core/test_page_generator.py');
+      const genScript = testPageGeneratorScript();
 
       if (fs.existsSync(genScript)) {
         const currentLang = getCurrentSystemLanguage();
@@ -5364,11 +5241,23 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       if (fs.existsSync(pdfPath)) {
-        res.writeHead(200, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': 'inline; filename="mantaprint-test-page.pdf"'
-        });
-        fs.createReadStream(pdfPath).pipe(res);
+        await streamFileResponse(
+          req,
+          res,
+          pdfPath,
+          {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'inline; filename="mantaprint-test-page.pdf"',
+            'Cache-Control': 'no-cache'
+          },
+          {
+            onComplete: () => {
+              try {
+                if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+              } catch {}
+            }
+          }
+        );
       } else {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Test page could not be generated' }));
@@ -6277,10 +6166,8 @@ im.save('${p2Path}', 'JPEG', quality=90)
       const targetPrinter = (curStatus.printers || []).find(p => p.queue_name === targetQueue || p.name === targetQueue);
       const displayName = targetPrinter ? targetPrinter.display_name : targetQueue.replace(/_/g, ' ');
 
-      const genScript = fs.existsSync('/opt/mantaprint/test_page_generator.py')
-        ? '/opt/mantaprint/test_page_generator.py'
-        : path.join(__dirname, '../../core/test_page_generator.py');
-      const pdfPath = `/tmp/mantaprint_testpage_${targetQueue}.pdf`;
+      const genScript = testPageGeneratorScript();
+      const pdfPath = `/tmp/mantaprint_testpage_${targetQueue}_${process.pid}_${Date.now()}.pdf`;
 
       if (fs.existsSync(genScript)) {
         const currentLang = getCurrentSystemLanguage();
@@ -6293,11 +6180,13 @@ im.save('${p2Path}', 'JPEG', quality=90)
       let printRes;
       if (fs.existsSync(pdfPath)) {
         printRes = await runCmd('lp', ['-d', targetQueue, '-t', `Uji Cetak MantaPrint - ${displayName}`, pdfPath]);
+        try { fs.unlinkSync(pdfPath); } catch {}
       } else {
         const textContent = `MantaPrint Hub Test Page\nPrinter: ${displayName}\nQueue: ${targetQueue}\nDate: ${new Date().toISOString()}\n`;
-        const tempText = `/tmp/testpage_${targetQueue}.txt`;
+        const tempText = `/tmp/testpage_${targetQueue}_${process.pid}_${Date.now()}.txt`;
         fs.writeFileSync(tempText, textContent, 'utf8');
         printRes = await runCmd('lp', ['-d', targetQueue, '-t', 'Test Page', tempText]);
+        try { fs.unlinkSync(tempText); } catch {}
       }
 
       await invalidateCacheAndBroadcast();
@@ -6526,256 +6415,240 @@ im.save('${p2Path}', 'JPEG', quality=90)
 
       const tempRawPath = path.join(SPOOL_TEMP_DIR, `mantaprint_raw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.dat`);
       const tempFinalPath = path.join(SPOOL_TEMP_DIR, `mantaprint_prn_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.dat`);
-      const fileStream = fs.createWriteStream(tempRawPath);
-
-      let totalBytes = 0;
-      let exceeded = false;
-      let aborted = false;
 
       const cleanupFiles = () => {
         try { if (fs.existsSync(tempRawPath)) fs.unlinkSync(tempRawPath); } catch {}
         try { if (fs.existsSync(tempFinalPath)) fs.unlinkSync(tempFinalPath); } catch {}
       };
 
-      req.on('data', chunk => {
-        totalBytes += chunk.length;
-        if (totalBytes > MAX_UPLOAD_BYTES) {
-          exceeded = true;
-          req.pause();
-          cleanupFiles();
+      try {
+        await streamToFileWithLimit(req, tempRawPath, MAX_UPLOAD_BYTES);
+      } catch (streamErr) {
+        cleanupFiles();
+        if (streamErr?.code === 'LIMIT_EXCEEDED') {
           if (!res.headersSent) {
             res.writeHead(413, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, message: 'Ukuran berkas melebihi batas 25MB.' }));
           }
+          return;
         }
-      });
-
-      req.on('aborted', () => {
-        aborted = true;
-        cleanupFiles();
-      });
-
-      req.pipe(fileStream);
-
-      fileStream.on('finish', async () => {
-        if (exceeded || aborted) return;
-        try {
-          const stats = fs.statSync(tempRawPath);
-          if (stats.size === 0) {
-            cleanupFiles();
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Berkas kosong (0 bytes).' }));
-            return;
-          }
-
-          let docName = req.headers['x-document-name'] || '';
-          try { docName = decodeURIComponent(docName); } catch {}
-          const contentType = req.headers['content-type'] || '';
-
-          if (contentType.includes('multipart/form-data')) {
-            const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
-            const boundary = boundaryMatch ? boundaryMatch[1].trim().replace(/^["']|["']$/g, '') : null;
-
-            if (boundary) {
-              // Read first 8KB to find multipart header
-              const headLen = Math.min(stats.size, 8192);
-              const headFd = fs.openSync(tempRawPath, 'r');
-              const headBuf = Buffer.alloc(headLen);
-              fs.readSync(headFd, headBuf, 0, headLen, 0);
-              fs.closeSync(headFd);
-
-              const headerEndIdx = headBuf.indexOf('\r\n\r\n');
-              if (headerEndIdx !== -1) {
-                const headerText = headBuf.toString('binary', 0, headerEndIdx);
-                const fnMatch = headerText.match(/filename="([^"]+)"/i);
-                if (fnMatch) docName = fnMatch[1];
-
-                const fileStart = headerEndIdx + 4;
-
-                // Read last 4KB to find footer boundary
-                const tailLen = Math.min(stats.size, 4096);
-                const tailFd = fs.openSync(tempRawPath, 'r');
-                const tailBuf = Buffer.alloc(tailLen);
-                fs.readSync(tailFd, tailBuf, 0, tailLen, Math.max(0, stats.size - tailLen));
-                fs.closeSync(tailFd);
-
-                const footerIdx = tailBuf.lastIndexOf(`--${boundary}`);
-                let fileEnd = stats.size;
-                if (footerIdx !== -1) {
-                  const tailOffset = Math.max(0, stats.size - tailLen);
-                  fileEnd = tailOffset + footerIdx;
-                  // Strip preceding CRLF if present
-                  if (fileEnd >= 2) {
-                    const checkFd = fs.openSync(tempRawPath, 'r');
-                    const crlfBuf = Buffer.alloc(2);
-                    fs.readSync(checkFd, crlfBuf, 0, 2, fileEnd - 2);
-                    fs.closeSync(checkFd);
-                    if (crlfBuf.toString() === '\r\n') {
-                      fileEnd -= 2;
-                    } else if (crlfBuf[1] === 0x0A) {
-                      fileEnd -= 1;
-                    }
-                  }
-                }
-
-                if (fileEnd > fileStart) {
-                  // Stream slice to tempFinalPath without loading entire payload into RAM
-                  await new Promise((resolvePipe, rejectPipe) => {
-                    const rStream = fs.createReadStream(tempRawPath, { start: fileStart, end: fileEnd - 1 });
-                    const wStream = fs.createWriteStream(tempFinalPath);
-                    rStream.pipe(wStream);
-                    wStream.on('finish', resolvePipe);
-                    wStream.on('error', rejectPipe);
-                  });
-                } else {
-                  fs.copyFileSync(tempRawPath, tempFinalPath);
-                }
-              } else {
-                fs.copyFileSync(tempRawPath, tempFinalPath);
-              }
-            } else {
-              fs.copyFileSync(tempRawPath, tempFinalPath);
-            }
-          } else {
-            // Raw binary upload
-            fs.copyFileSync(tempRawPath, tempFinalPath);
-          }
-
-          try { fs.unlinkSync(tempRawPath); } catch {}
-
-          if (!docName) docName = 'Dokumen Klien';
-
-          // Extract printer target from query, headers, or default queue
-          const requestedPrinter = url.searchParams.get('printer') || req.headers['x-printer-queue'];
-          const targetPrinter = resolveTargetQueue(requestedPrinter);
-          if (!targetPrinter) {
-            cleanupFiles();
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Tidak ada printer aktif yang terhubung.' }));
-            return;
-          }
-
-          // Dynamic lp options
-          const lpArgs = ['-d', targetPrinter];
-
-          const copies = parseInt(req.headers['x-print-copies'] || url.searchParams.get('copies') || '1', 10);
-          if (copies > 1 && copies <= 100) {
-            lpArgs.push('-n', String(copies));
-          }
-
-          const rawMedia = (req.headers['x-print-media'] || url.searchParams.get('media') || 'A4').trim();
-          if (/^[a-zA-Z0-9_\-]+$/.test(rawMedia)) {
-            lpArgs.push('-o', `media=${rawMedia}`);
-          }
-
-          const rawOrientation = (req.headers['x-print-orientation'] || url.searchParams.get('orientation') || '').trim();
-          if (rawOrientation === 'landscape' || rawOrientation === 'portrait') {
-            lpArgs.push('-o', rawOrientation);
-          }
-
-          const rawDuplex = (req.headers['x-print-duplex'] || url.searchParams.get('duplex') || '').trim();
-          if (rawDuplex === 'two-sided-long-edge' || rawDuplex === 'two-sided-short-edge') {
-            lpArgs.push('-o', `sides=${rawDuplex}`);
-          }
-
-          const rawPageRanges = (req.headers['x-print-page-ranges'] || url.searchParams.get('page_ranges') || '').trim();
-          if (/^[\d,-]+$/.test(rawPageRanges)) {
-            lpArgs.push('-o', `page-ranges=${rawPageRanges}`);
-          }
-
-          lpArgs.push('-o', 'fit-to-page');
-          lpArgs.push('--', tempFinalPath);
-
-          const printRes = await runCmd('lp', lpArgs, 15000);
-          cleanupFiles();
-
-          const success = printRes.code === 0;
-          if (!success) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              success: false,
-              state: 'error',
-              message: `Gagal mengirim ke antrean printer: ${printRes.stderr || printRes.stdout}`
-            }));
-            return;
-          }
-
-          const match = (printRes.stdout || '').match(/request id is ([^\s]+)/i);
-          const jobId = match ? match[1] : `${targetPrinter}-${Date.now() % 100000}`;
-          const numericId = parseInt((jobId.match(/-(\d+)$/) || [])[1] || '0', 10);
-
-          const jobRecord = jobTracker.registerJob({
-            id: jobId,
-            printer: targetPrinter,
-            title: docName,
-            user: req.socket.remoteAddress || 'client',
-            size: stats.size
-          });
-          const jobToken = crypto.randomBytes(16).toString('hex');
-          jobTracker.updateJob(jobId, { cancel_token: jobToken });
-
-          const shouldWait = url.searchParams.get('wait') === 'true' ||
-                             url.searchParams.get('sync') === 'true' ||
-                             url.searchParams.get('sync') === '1' ||
-                             req.headers['x-wait-job'] === 'true';
-
-          if (shouldWait) {
-            const finalJob = await jobTracker.waitForJob(jobId, 60000);
-            const isSuccess = finalJob.state === 'completed';
-            res.writeHead(isSuccess ? 200 : (finalJob.state === 'error' ? 502 : 504), { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              success: isSuccess,
-              job_id: finalJob.id,
-              job_token: jobToken,
-              id: finalJob.numeric_id,
-              printer: targetPrinter,
-              title: docName,
-              state: finalJob.state,
-              status_message: finalJob.status_message,
-              error: finalJob.error,
-              duration_ms: finalJob.duration_ms,
-              poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
-              events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
-              message: isSuccess 
-                ? `Dokumen "${docName}" berhasil dicetak pada ${targetPrinter}!`
-                : `Pencetakan tidak tuntas: ${finalJob.status_message}`
-            }));
-            return;
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            job_id: jobId,
-            id: numericId,
-            printer: targetPrinter,
-            title: docName,
-            state: jobRecord.state,
-            status_message: jobRecord.status_message,
-            poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
-            events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
-            wait_url: `/api/jobs/${encodeURIComponent(jobId)}/wait`,
-            job_token: jobToken,
-            message: `Dokumen "${docName}" berhasil dikirim ke antrean ${targetPrinter}. Sedang dicetak.`
-          }));
-        } catch (uploadErr) {
-          cleanupFiles();
-          console.error('[Upload Error]', uploadErr);
-          if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: `Kesalahan pemrosesan berkas: ${uploadErr.message}` }));
-          }
+        if (streamErr?.code === 'ECONNRESET' || req.aborted || req.destroyed) {
+          return;
         }
-      });
-
-      fileStream.on('error', err => {
-        cleanupFiles();
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: `Gagal menulis berkas sementara: ${err.message}` }));
+          res.end(JSON.stringify({ success: false, message: `Gagal menulis berkas sementara: ${streamErr.message}` }));
         }
-      });
+        return;
+      }
 
+      try {
+        const stats = fs.statSync(tempRawPath);
+        if (stats.size === 0) {
+          cleanupFiles();
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Berkas kosong (0 bytes).' }));
+          return;
+        }
+
+        let docName = req.headers['x-document-name'] || '';
+        try { docName = decodeURIComponent(docName); } catch {}
+        const contentType = req.headers['content-type'] || '';
+        let slicedMultipart = false;
+
+        if (contentType.includes('multipart/form-data')) {
+          const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
+          const boundary = boundaryMatch ? boundaryMatch[1].trim().replace(/^["']|["']$/g, '') : null;
+
+          if (boundary) {
+            // Read first 8KB to find multipart header
+            const headLen = Math.min(stats.size, 8192);
+            const headFd = fs.openSync(tempRawPath, 'r');
+            const headBuf = Buffer.alloc(headLen);
+            try {
+              fs.readSync(headFd, headBuf, 0, headLen, 0);
+            } finally {
+              fs.closeSync(headFd);
+            }
+
+            const headerEndIdx = headBuf.indexOf('\r\n\r\n');
+            if (headerEndIdx !== -1) {
+              const headerText = headBuf.toString('binary', 0, headerEndIdx);
+              const fnMatch = headerText.match(/filename="([^"]+)"/i);
+              if (fnMatch) docName = fnMatch[1];
+
+              const fileStart = headerEndIdx + 4;
+
+              // Read last 4KB to find footer boundary
+              const tailLen = Math.min(stats.size, 4096);
+              const tailFd = fs.openSync(tempRawPath, 'r');
+              const tailBuf = Buffer.alloc(tailLen);
+              try {
+                fs.readSync(tailFd, tailBuf, 0, tailLen, Math.max(0, stats.size - tailLen));
+              } finally {
+                fs.closeSync(tailFd);
+              }
+
+              const footerIdx = tailBuf.lastIndexOf(`--${boundary}`);
+              let fileEnd = stats.size;
+              if (footerIdx !== -1) {
+                const tailOffset = Math.max(0, stats.size - tailLen);
+                fileEnd = tailOffset + footerIdx;
+                // Strip preceding CRLF if present
+                if (fileEnd >= 2) {
+                  const checkFd = fs.openSync(tempRawPath, 'r');
+                  const crlfBuf = Buffer.alloc(2);
+                  try {
+                    fs.readSync(checkFd, crlfBuf, 0, 2, fileEnd - 2);
+                  } finally {
+                    fs.closeSync(checkFd);
+                  }
+                  if (crlfBuf.toString() === '\r\n') {
+                    fileEnd -= 2;
+                  } else if (crlfBuf[1] === 0x0A) {
+                    fileEnd -= 1;
+                  }
+                }
+              }
+
+              if (fileEnd > fileStart) {
+                await sliceFileRange(tempRawPath, tempFinalPath, fileStart, fileEnd - 1);
+                slicedMultipart = true;
+              }
+            }
+          }
+        }
+
+        if (slicedMultipart) {
+          try { fs.unlinkSync(tempRawPath); } catch {}
+        } else {
+          // Move in place within the same tmpfs directory instead of duplicating up to 25MB
+          fs.renameSync(tempRawPath, tempFinalPath);
+        }
+
+        if (!docName) docName = 'Dokumen Klien';
+
+        // Extract printer target from query, headers, or default queue
+        const requestedPrinter = url.searchParams.get('printer') || req.headers['x-printer-queue'];
+        const targetPrinter = resolveTargetQueue(requestedPrinter);
+        if (!targetPrinter) {
+          cleanupFiles();
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Tidak ada printer aktif yang terhubung.' }));
+          return;
+        }
+
+        // Dynamic lp options
+        const lpArgs = ['-d', targetPrinter];
+
+        const copies = parseInt(req.headers['x-print-copies'] || url.searchParams.get('copies') || '1', 10);
+        if (copies > 1 && copies <= 100) {
+          lpArgs.push('-n', String(copies));
+        }
+
+        const rawMedia = (req.headers['x-print-media'] || url.searchParams.get('media') || 'A4').trim();
+        if (/^[a-zA-Z0-9_\-]+$/.test(rawMedia)) {
+          lpArgs.push('-o', `media=${rawMedia}`);
+        }
+
+        const rawOrientation = (req.headers['x-print-orientation'] || url.searchParams.get('orientation') || '').trim();
+        if (rawOrientation === 'landscape' || rawOrientation === 'portrait') {
+          lpArgs.push('-o', rawOrientation);
+        }
+
+        const rawDuplex = (req.headers['x-print-duplex'] || url.searchParams.get('duplex') || '').trim();
+        if (rawDuplex === 'two-sided-long-edge' || rawDuplex === 'two-sided-short-edge') {
+          lpArgs.push('-o', `sides=${rawDuplex}`);
+        }
+
+        const rawPageRanges = (req.headers['x-print-page-ranges'] || url.searchParams.get('page_ranges') || '').replace(/\s+/g, '');
+        if (/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(rawPageRanges)) {
+          lpArgs.push('-o', `page-ranges=${rawPageRanges}`);
+        }
+
+        lpArgs.push('-o', 'fit-to-page');
+        lpArgs.push('--', tempFinalPath);
+
+        const printRes = await runCmd('lp', lpArgs, 15000);
+        cleanupFiles();
+
+        const success = printRes.code === 0;
+        if (!success) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            state: 'error',
+            message: `Gagal mengirim ke antrean printer: ${printRes.stderr || printRes.stdout}`
+          }));
+          return;
+        }
+
+        const match = (printRes.stdout || '').match(/request id is ([^\s]+)/i);
+        const jobId = match ? match[1] : `${targetPrinter}-${Date.now() % 100000}`;
+        const numericId = parseInt((jobId.match(/-(\d+)$/) || [])[1] || '0', 10);
+
+        const jobRecord = jobTracker.registerJob({
+          id: jobId,
+          printer: targetPrinter,
+          title: docName,
+          user: req.socket.remoteAddress || 'client',
+          size: stats.size
+        });
+        const jobToken = crypto.randomBytes(16).toString('hex');
+        jobTracker.updateJob(jobId, { cancel_token: jobToken });
+
+        const shouldWait = url.searchParams.get('wait') === 'true' ||
+                           url.searchParams.get('sync') === 'true' ||
+                           url.searchParams.get('sync') === '1' ||
+                           req.headers['x-wait-job'] === 'true';
+
+        if (shouldWait) {
+          const finalJob = await jobTracker.waitForJob(jobId, 60000);
+          const isSuccess = finalJob.state === 'completed';
+          res.writeHead(isSuccess ? 200 : (finalJob.state === 'error' ? 502 : 504), { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: isSuccess,
+            job_id: finalJob.id,
+            job_token: jobToken,
+            id: finalJob.numeric_id,
+            printer: targetPrinter,
+            title: docName,
+            state: finalJob.state,
+            status_message: finalJob.status_message,
+            error: finalJob.error,
+            duration_ms: finalJob.duration_ms,
+            poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
+            events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
+            message: isSuccess 
+              ? `Dokumen "${docName}" berhasil dicetak pada ${targetPrinter}!`
+              : `Pencetakan tidak tuntas: ${finalJob.status_message}`
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          job_id: jobId,
+          id: numericId,
+          printer: targetPrinter,
+          title: docName,
+          state: jobRecord.state,
+          status_message: jobRecord.status_message,
+          poll_url: `/api/jobs/${encodeURIComponent(jobId)}`,
+          events_url: `/api/jobs/${encodeURIComponent(jobId)}/events`,
+          wait_url: `/api/jobs/${encodeURIComponent(jobId)}/wait`,
+          job_token: jobToken,
+          message: `Dokumen "${docName}" berhasil dikirim ke antrean ${targetPrinter}. Sedang dicetak.`
+        }));
+      } catch (uploadErr) {
+        cleanupFiles();
+        console.error('[Upload Error]', uploadErr);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: `Kesalahan pemrosesan berkas: ${uploadErr.message}` }));
+        }
+      }
       return;
     }
 
@@ -7141,46 +7014,53 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
 
       // Remote IR Mapping Wizard routes
-      if (subPath === 'remote/wizard/start' && req.method === 'POST') {
-        const result = await remoteWizardEngine.start();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+      if (subPath.startsWith('remote/wizard/')) {
+        if (!isAdminOrLocal(req)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized', message: 'Akses ditolak. Membutuhkan autentikasi administrator.' }));
+          return;
+        }
+        if (subPath === 'remote/wizard/start' && req.method === 'POST') {
+          const result = await remoteWizardEngine.start();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/status' && req.method === 'GET') {
-        const result = remoteWizardEngine.getStatus();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/status' && req.method === 'GET') {
+          const result = remoteWizardEngine.getStatus();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/undo' && req.method === 'POST') {
-        const result = await remoteWizardEngine.undo();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/undo' && req.method === 'POST') {
+          const result = await remoteWizardEngine.undo();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/reset' && req.method === 'POST') {
-        const result = await remoteWizardEngine.reset();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/reset' && req.method === 'POST') {
+          const result = await remoteWizardEngine.reset();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/skip' && req.method === 'POST') {
-        const result = await remoteWizardEngine.skip();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
+        if (subPath === 'remote/wizard/skip' && req.method === 'POST') {
+          const result = await remoteWizardEngine.skip();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
 
-      if (subPath === 'remote/wizard/cancel' && req.method === 'POST') {
-        remoteWizardEngine.stop();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Wizard dibatalkan' }));
-        return;
+        if (subPath === 'remote/wizard/cancel' && req.method === 'POST') {
+          remoteWizardEngine.stop();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'Wizard dibatalkan' }));
+          return;
+        }
       }
     }
 
@@ -7188,13 +7068,18 @@ im.save('${p2Path}', 'JPEG', quality=90)
     if (pathname.startsWith('/api/system/')) {
       const sub = pathname.replace('/api/system/', '');
 
-      // 1. Get full system settings & time status
+      // 1. Get full system settings & time status (Admin Only, redacted)
       if (sub === 'settings' && req.method === 'GET') {
+        if (!isAdminAuthenticated(req)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Autentikasi admin diperlukan.' }));
+          return;
+        }
         const timeStatus = await configManager.getTimeStatus();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           success: true,
-          settings: configManager.getConfig(),
+          settings: redactConfigForClient(configManager.getConfig()),
           time_status: timeStatus
         }));
         return;
@@ -7437,7 +7322,7 @@ im.save('${p2Path}', 'JPEG', quality=90)
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'Merestart layanan appliance Hub...' }));
         setTimeout(() => {
-          runCmd('systemctl', ['restart', 'mantaprint-tui.service', 'mantaprint-agent.service', 'cups.service']).catch(() => {});
+          runCmd('systemctl', ['restart', 'mantaprint-tui.service', 'cups.service']).catch(() => {});
           setTimeout(() => {
             runCmd('systemctl', ['restart', 'mantaprint-web.service']).catch(() => {});
           }, 600);
@@ -7461,60 +7346,26 @@ im.save('${p2Path}', 'JPEG', quality=90)
       }
     }
 
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      res.writeHead(404, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ status: 'error', message: 'Endpoint API tidak ditemukan.' }));
+      return;
+    }
+
     // --- STATIC ASSET SERVING (SPA) & STRICT PATH TRAVERSAL GUARD ---
-    const normalizedPath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
-    const resolvedPath = path.normalize(path.resolve(DIST_DIR, normalizedPath));
-
-    // Guard: strictly ensure requested file stays within DIST_DIR
-    if (!resolvedPath.startsWith(DIST_DIR)) {
-      res.writeHead(403, { 'Content-Type': 'text/plain' });
-      res.end('Forbidden');
+    const resolvedAsset = resolveStaticAsset(DIST_DIR, pathname, req.headers);
+    if (resolvedAsset.status === 304) {
+      res.writeHead(304, resolvedAsset.headers);
+      res.end();
       return;
     }
-
-    let filePath = resolvedPath;
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-      const dirIndex = path.join(filePath, 'index.html');
-      if (fs.existsSync(dirIndex)) {
-        filePath = dirIndex;
-      } else {
-        filePath = path.join(DIST_DIR, 'index.html');
-      }
-    } else if (!fs.existsSync(filePath)) {
-      if (pathname.startsWith('/hdmi')) {
-        const hdmiFile = path.join(DIST_DIR, 'hdmi', 'index.html');
-        filePath = fs.existsSync(hdmiFile) ? hdmiFile : path.join(DIST_DIR, 'index.html');
-      } else if (pathname.startsWith('/scanner')) {
-        const scannerFile = path.join(DIST_DIR, 'scanner', 'index.html');
-        filePath = fs.existsSync(scannerFile) ? scannerFile : path.join(DIST_DIR, 'index.html');
-      } else {
-        filePath = path.join(DIST_DIR, 'index.html');
-      }
-    }
-
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      const stream = fs.createReadStream(filePath);
-
-      let cacheControl = 'no-cache, must-revalidate';
-      if (ext === '.html' || normalizedPath === 'sw.js' || normalizedPath === 'manifest.json') {
-        cacheControl = 'no-cache, no-store, must-revalidate';
-      } else if (normalizedPath.startsWith('ocr/')) {
-        // OCR engine and language data live under a versioned folder and never change in place.
-        cacheControl = 'public, max-age=31536000, immutable';
-      }
-
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Cache-Control': cacheControl
-      });
-      stream.pipe(res);
+    if (resolvedAsset.status !== 200 || !resolvedAsset.filePath) {
+      res.writeHead(resolvedAsset.status, resolvedAsset.headers);
+      res.end(resolvedAsset.body || 'Not Found');
       return;
     }
-
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+    await streamFileResponse(req, res, resolvedAsset.filePath, resolvedAsset.headers);
+    return;
   } catch (globalErr) {
     console.error('[!] Global request handler error:', globalErr);
     if (!res.headersSent) {

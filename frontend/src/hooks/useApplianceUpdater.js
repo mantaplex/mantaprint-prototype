@@ -18,6 +18,7 @@ export function useApplianceUpdater() {
   const isUpdatingRef = useRef(false);
   const isRestartingRef = useRef(false);
   const healthPollIntervalRef = useRef(null);
+  const failSafeTimerRef = useRef(null);
 
   const getAdminToken = () => {
     if (typeof window !== 'undefined') {
@@ -38,6 +39,10 @@ export function useApplianceUpdater() {
     setProgress(100);
 
     const forceHardReload = () => {
+      if (failSafeTimerRef.current) {
+        clearTimeout(failSafeTimerRef.current);
+        failSafeTimerRef.current = null;
+      }
       if (healthPollIntervalRef.current) {
         clearInterval(healthPollIntervalRef.current);
         healthPollIntervalRef.current = null;
@@ -60,7 +65,8 @@ export function useApplianceUpdater() {
     };
 
     // Fail-safe maximum timeout: if health check does not conclude in 12s, force hard reload
-    const failSafeTimer = setTimeout(forceHardReload, 12000);
+    if (failSafeTimerRef.current) clearTimeout(failSafeTimerRef.current);
+    failSafeTimerRef.current = setTimeout(forceHardReload, 12000);
 
     let attempts = 0;
     const maxAttempts = 30; // 30 * 1s = 30s max wait
@@ -79,7 +85,10 @@ export function useApplianceUpdater() {
         if (res.ok) {
           const health = await res.json();
           if (health.status === 'healthy') {
-            clearTimeout(failSafeTimer);
+            if (failSafeTimerRef.current) {
+              clearTimeout(failSafeTimerRef.current);
+              failSafeTimerRef.current = null;
+            }
             if (healthPollIntervalRef.current) {
               clearInterval(healthPollIntervalRef.current);
               healthPollIntervalRef.current = null;
@@ -107,7 +116,10 @@ export function useApplianceUpdater() {
       }
 
       if (attempts >= maxAttempts) {
-        clearTimeout(failSafeTimer);
+        if (failSafeTimerRef.current) {
+          clearTimeout(failSafeTimerRef.current);
+          failSafeTimerRef.current = null;
+        }
         forceHardReload();
       }
     }, 1000);
@@ -152,6 +164,11 @@ export function useApplianceUpdater() {
     es.addEventListener('state', (e) => {
       try {
         const data = JSON.parse(e.data);
+        if (data.state === 'FAILED') {
+          isUpdatingRef.current = false;
+          isRestartingRef.current = false;
+          setIsRestartingAppliance(false);
+        }
         if (isUpdatingRef.current || isRestartingRef.current) {
           if (data.state === 'COMPLETED' || data.state === 'RESTARTING') {
             setUpdaterState('COMPLETED');
@@ -220,8 +237,11 @@ export function useApplianceUpdater() {
   const checkForUpdates = useCallback(async (force = true) => {
     setIsChecking(true);
     setError(null);
+    const token = getAdminToken();
     try {
-      const res = await fetch(`/api/system/updates/check?force=${force}`);
+      const res = await fetch(`/api/system/updates/check?force=${force}`, {
+        headers: token ? { 'X-Admin-Token': token } : {}
+      });
       const data = await res.json();
       if (res.ok && data.success) {
         setVersionInfo(prev => ({ ...(prev || {}), ...data }));
@@ -312,9 +332,15 @@ export function useApplianceUpdater() {
     return () => {
       if (eventSourceRef.current) eventSourceRef.current.close();
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (!isRestartingRef.current && healthPollIntervalRef.current) {
-        clearInterval(healthPollIntervalRef.current);
-        healthPollIntervalRef.current = null;
+      if (!isRestartingRef.current) {
+        if (healthPollIntervalRef.current) {
+          clearInterval(healthPollIntervalRef.current);
+          healthPollIntervalRef.current = null;
+        }
+        if (failSafeTimerRef.current) {
+          clearTimeout(failSafeTimerRef.current);
+          failSafeTimerRef.current = null;
+        }
       }
     };
   }, [connectStream, fetchVersion, fetchBackups]);

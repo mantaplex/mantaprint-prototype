@@ -417,6 +417,11 @@ export async function receiveUpload(req, destPath, maxBytes) {
       else cb(null, chunk);
     }
   });
-  await pipeline(req, limiter, fs.createWriteStream(destPath, { mode: 0o600 }));
-  return size;
+  try {
+    await pipeline(req, limiter, fs.createWriteStream(destPath, { mode: 0o600 }));
+    return size;
+  } catch (err) {
+    try { fs.unlinkSync(destPath); } catch {}
+    throw err;
+  }
 }

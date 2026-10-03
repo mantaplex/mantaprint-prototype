@@ -1,74 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
-import { scannerHardwareLock, scannerPairingManager } from '../src/web/server/scanner-pairing-manager.mjs';
+import { ScannerHardwareLock, scannerHardwareLock } from '../src/web/server/scanner-pairing-manager.mjs';
 
-test('Scanner API & Mutex Integration Logic', async (t) => {
-  await t.test('Scanner probe returns valid telemetry and UUID', () => {
-    const hubUuid = scannerPairingManager.getHubUuid();
-    assert.ok(hubUuid.startsWith('hub_'));
+test('Scanner Hardware Mutex Logic (MantaPage Scan Studio)', async (t) => {
+  await t.test('initial hardware lock status is idle', () => {
     const status = scannerHardwareLock.getStatus();
     assert.equal(status.is_busy, false);
+    assert.equal(status.holder, null);
   });
 
-  let generatedCode;
-  let pairedClient;
-
-  await t.test('generates pairing code with 5-minute expiry', () => {
-    generatedCode = scannerPairingManager.generatePairingCode('mantaprint.local', '192.168.1.114', 80);
-    assert.ok(generatedCode.pin);
-    assert.ok(generatedCode.pairing_token);
-    assert.equal(generatedCode.expires_in_sec, 300);
-  });
-
-  await t.test('verifies pairing and creates client session', () => {
-    const res = scannerPairingManager.verifyPairing(generatedCode.pin, {
-      device_name: 'Cashier iPad',
-      platform: 'iPadOS',
-      ip: '192.168.1.50'
-    });
-    assert.equal(res.success, true);
-    assert.ok(res.token);
-    assert.ok(res.client_id);
-    pairedClient = res;
-  });
-
-  await t.test('verifies valid client token and checks revocation', () => {
-    // Valid
-    let check = scannerPairingManager.verifyClientToken(pairedClient.token, '192.168.1.50');
-    assert.equal(check.valid, true);
-
-    // Revoke
-    scannerPairingManager.revokeClient(pairedClient.client_id, 'admin');
-    check = scannerPairingManager.verifyClientToken(pairedClient.token, '192.168.1.50');
-    assert.equal(check.valid, false);
-    assert.equal(check.code, 'ERR_CLIENT_REVOKED');
-
-    // Reauthorize
-    scannerPairingManager.reauthorizeClient(pairedClient.client_id);
-    check = scannerPairingManager.verifyClientToken(pairedClient.token, '192.168.1.50');
-    assert.equal(check.valid, true);
-  });
-
-  await t.test('hardware mutex protects concurrent scanning jobs', () => {
-    const lock1 = scannerHardwareLock.acquire(pairedClient.client_id, 'Cashier iPad');
+  await t.test('hardware mutex protects concurrent scanning jobs and enforces holder release', () => {
+    const lock1 = scannerHardwareLock.acquire('studio_session_1', 'Scan Studio');
     assert.equal(lock1.acquired, true);
+    assert.equal(scannerHardwareLock.getStatus().is_busy, true);
 
-    const lock2 = scannerHardwareLock.acquire('other_client', 'Warehouse Android');
+    const lock2 = scannerHardwareLock.acquire('studio_session_2', 'Other Session');
     assert.equal(lock2.acquired, false);
     assert.equal(lock2.error, 'SCANNER_BUSY');
-    assert.equal(lock2.holder, 'Cashier iPad');
+    assert.equal(lock2.holder, 'Scan Studio');
 
-    // Release
-    scannerHardwareLock.release(pairedClient.client_id);
+    // Non-holder cannot release
+    assert.equal(scannerHardwareLock.release('studio_session_2'), false);
+    assert.equal(scannerHardwareLock.getStatus().is_busy, true);
+
+    // Holder releases cleanly
+    assert.equal(scannerHardwareLock.release('studio_session_1'), true);
     assert.equal(scannerHardwareLock.getStatus().is_busy, false);
 
-    // Now other client can acquire
-    const lock3 = scannerHardwareLock.acquire('other_client', 'Warehouse Android');
+    // Next session can now acquire
+    const lock3 = scannerHardwareLock.acquire('studio_session_2', 'Other Session');
     assert.equal(lock3.acquired, true);
-    scannerHardwareLock.release('other_client');
+    scannerHardwareLock.release('studio_session_2');
   });
 
-  // Cleanup
-  scannerPairingManager.deleteClient(pairedClient.client_id);
+  await t.test('auto-releases stale locks after watchdog timeout', async () => {
+    const shortLock = new ScannerHardwareLock(30);
+    const first = shortLock.acquire('session_a', 'Session A');
+    assert.equal(first.acquired, true);
+
+    await new Promise((r) => setTimeout(r, 50));
+    const second = shortLock.acquire('session_b', 'Session B');
+    assert.equal(second.acquired, true);
+    shortLock.forceRelease();
+  });
 });

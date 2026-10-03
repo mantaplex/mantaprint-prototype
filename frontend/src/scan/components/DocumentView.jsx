@@ -135,6 +135,7 @@ export default function DocumentView({
     const i = pages.findIndex((p) => p.id === id);
     if (!el || i < 0) return;
     const it = layout.items[i];
+    if (!it) return;
     const top = offsetFrac === null ? it.top - PAD_TOP + 8 : it.top + offsetFrac * it.h - el.clientHeight * 0.35;
     lastReported.current = id;
     el.scrollTo({ top: Math.max(0, top), behavior });
@@ -146,6 +147,7 @@ export default function DocumentView({
     const i = pages.findIndex((p) => p.id === id);
     if (!el || i < 0) return { x: 0.5, y: 0.5 };
     const it = layout.items[i];
+    if (!it) return { x: 0.5, y: 0.5 };
     const top = Math.max(it.top, el.scrollTop);
     const bottom = Math.min(it.top + it.h, el.scrollTop + el.clientHeight - 110);
     const cy = bottom > top ? (top + bottom) / 2 : it.top + it.h / 2;

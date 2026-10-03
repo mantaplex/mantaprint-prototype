@@ -9,7 +9,7 @@
     "prebuild": "node scripts/copy-ocr-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/utils/*.test.js src/scan/engine/*.test.js"
+    "test": "node --test src/utils/*.test.js src/scan/engine/*.test.js src/scan/hooks/*.test.js"
   },
   "dependencies": {
     "docx": "^9.7.2",

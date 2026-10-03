@@ -77,6 +77,8 @@ export function Slider({ label, value, min, max, step = 1, onChange, format = (v
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         onPointerUp={onCommit}
+        onPointerCancel={onCommit}
+        onBlur={onCommit}
         onKeyUp={onCommit}
         className="studio-range w-full"
       />

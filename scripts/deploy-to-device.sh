@@ -89,15 +89,6 @@ deploy_web() {
   fi
 }
 
-deploy_agent() {
-  echo "Deploying Agent module..."
-  rsync $RSYNC_OPTS "$ROOT_DIR/src/agent/" "$HOST:/opt/mantaprint/agent/"
-  if [ "$DRY_RUN" = false ]; then
-    echo "Restarting mantaprint-agent.service..."
-    ssh "$HOST" "systemctl restart mantaprint-agent.service"
-  fi
-}
-
 deploy_systemd() {
   echo "Deploying systemd services & udev rules..."
   rsync $RSYNC_OPTS $ROOT_DIR/systemd/mantaprint*.service "$HOST:/etc/systemd/system/"
@@ -112,9 +103,6 @@ deploy_systemd() {
   fi
   if [ -d "$ROOT_DIR/system/udev" ]; then
     rsync $RSYNC_OPTS "$ROOT_DIR/system/udev/" "$HOST:/etc/udev/rules.d/"
-  fi
-  if [ -d "$ROOT_DIR/system/systemd" ]; then
-    rsync $RSYNC_OPTS "$ROOT_DIR/system/systemd/" "$HOST:/etc/systemd/system/"
   fi
   if [ -d "$ROOT_DIR/system/keymaps" ]; then
     rsync $RSYNC_OPTS "$ROOT_DIR/system/keymaps/" "$HOST:/etc/rc_keymaps/"
@@ -159,9 +147,6 @@ case "$MODULE" in
   tui)
     deploy_tui
     ;;
-  agent)
-    deploy_agent
-    ;;
   backend)
     deploy_backend
     ;;
@@ -172,12 +157,11 @@ case "$MODULE" in
     deploy_core
     deploy_web
     deploy_tui
-    deploy_agent
     deploy_backend
     deploy_systemd
     ;;
   *)
-    echo "Unknown module: $MODULE (valid options: all, web, tui, agent, core, backend, systemd, system)"
+    echo "Unknown module: $MODULE (valid options: all, web, tui, core, backend, systemd, system)"
     exit 1
     ;;
 esac
@@ -185,7 +169,7 @@ esac
 echo "[3/4] Verifying remote service status..."
 if [ "$DRY_RUN" = false ]; then
   sleep 2
-  ssh "$HOST" "systemctl is-active mantaprint-web.service mantaprint-agent.service cups.service mantaprint-tui.service mantaprint-ir.service || true"
+  ssh "$HOST" "systemctl is-active mantaprint-web.service cups.service mantaprint-tui.service mantaprint-ir.service || true"
 fi
 
 echo "======================================================================"

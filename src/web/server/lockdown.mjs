@@ -67,15 +67,33 @@ export function validPin(pin) {
   return /^\d{4,8}$/.test(String(pin || ''));
 }
 
+let cachedDefaultPinHash = null;
+const configCache = new Map(); // path -> { mtimeMs, cfg }
+
+function getDefaultPinHash() {
+  if (!cachedDefaultPinHash) {
+    cachedDefaultPinHash = hashPin(DEFAULT_PIN);
+  }
+  return cachedDefaultPinHash;
+}
+
 export function defaultConfig() {
-  return { version: 1, enabled: false, admin_ips: [], ssh_from_admin: false, pin_hash: hashPin(DEFAULT_PIN), pin_is_default: true, enabled_at: null, enabled_by: null };
+  return { version: 1, enabled: false, admin_ips: [], ssh_from_admin: false, pin_hash: getDefaultPinHash(), pin_is_default: true, enabled_at: null, enabled_by: null };
 }
 
 export function loadConfig(p = CONFIG_PATH) {
   try {
+    const stat = fs.statSync(p);
+    const cached = configCache.get(p);
+    if (cached && cached.mtimeMs === stat.mtimeMs) {
+      return { ...cached.cfg, admin_ips: [...cached.cfg.admin_ips] };
+    }
     const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-    return { ...defaultConfig(), ...c, admin_ips: Array.isArray(c.admin_ips) ? c.admin_ips : [] };
+    const cfg = { ...defaultConfig(), ...c, admin_ips: Array.isArray(c.admin_ips) ? c.admin_ips : [] };
+    configCache.set(p, { mtimeMs: stat.mtimeMs, cfg });
+    return { ...cfg, admin_ips: [...cfg.admin_ips] };
   } catch {
+    configCache.delete(p);
     return defaultConfig();
   }
 }
@@ -85,6 +103,7 @@ export function saveConfig(cfg, p = CONFIG_PATH) {
   const tmp = `${p}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, p);
+  configCache.delete(p);
 }
 
 /**

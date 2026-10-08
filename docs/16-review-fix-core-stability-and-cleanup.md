@@ -1,7 +1,14 @@
 # Review & merge plan for `fix/core-stability-and-cleanup`
 
 **Reviewer:** maintainer session (MantaPush One), 2026-10-03.
-**Reviewed:** 9 commits `186b06e..79b65c7` on top of `v0.3.14` (`864d9db`), 213 files, +2 571 / −34 451 lines.
+> **History rewrite notice (2026-10-08).** Every branch and tag of this repository was rewritten to
+> remove private device addresses, SSH aliases and a user name from all commits. Commit SHAs changed;
+> the ones in this document are the new ones. **Delete your old clone and clone again** (`git pull`
+> would merge the old history back in): `git clone -b fix/core-stability-and-cleanup
+> https://github.com/mantaplex/mantaprint-prototype.git`. Never commit device addresses, aliases or
+> credentials; `AGENTS.md` now explains where they live instead.
+
+**Reviewed:** 9 commits `843cf0b..7abbd46` on top of `v0.3.14` (`2584e80`), 213 files, +2 571 / −34 451 lines.
 **Verdict:** *do not merge as-is.* The engineering is mostly good and several fixes are important,
 but the branch mixes a product decision (dropping MantaPool, the fleet agent, the Scanner PWA and
 legacy code), low-risk security fixes, and behaviour changes that need hardware verification, in
@@ -32,15 +39,15 @@ release to `main` with the usual version bump + tag + GitHub Release.
 ## 1. Blocking issues (fix first, in this branch)
 
 ### 1.1 Hub logo disappears (regression)
-`frontend/public/mantaprint.png` and `src/web/dist/mantaprint.png` were deleted in `8fecd4d`, but
+`frontend/public/mantaprint.png` and `src/web/dist/mantaprint.png` were deleted in `74077c8`, but
 `frontend/src/hub/Home.jsx:55` and `frontend/src/shell/AppHeader.jsx:17` still render
 `<img src="/mantaprint.png">`. On this branch the homepage hero and every header show a broken
 image. **Fix:** restore the file (`git checkout main -- frontend/public/mantaprint.png`) or point
 both components at `/icon-512.png`. Verify with a Playwright screenshot of `/` and `/admin`.
 
 ### 1.2 Oversized, unexplained commits
-`60e7523` ("harden backend security, scan studio reliability, and admin console state") and
-`79b65c7` ("harden printer provisioning, storage mounts, proxies, and driver workflows") each bundle
+`f92e08f` ("harden backend security, scan studio reliability, and admin console state") and
+`7abbd46` ("harden printer provisioning, storage mounts, proxies, and driver workflows") each bundle
 10–20 unrelated changes with a one-line message. We cannot bisect a regression through that.
 **Fix:** rewrite the branch history into topic commits (one bug = one commit, message = *what was
 wrong → what changed → how it was verified*). Suggested split in §2–§4. `git rebase -i` on your
@@ -54,7 +61,7 @@ the docs it must update. Convention: see the `[0.3.14]` section of `CHANGELOG.md
 detail level (name the bug, the cause, the fix, how it was found).
 
 ### 1.4 Committed `dist/`
-`4ac8a6f` rebuilds `src/web/dist`. Do not commit dist from a feature branch; the maintainer
+`0a71853` rebuilds `src/web/dist`. Do not commit dist from a feature branch; the maintainer
 rebuilds it at release time (`npm run build:frontend`). Drop that commit from the rebase.
 
 ---
@@ -66,7 +73,7 @@ otherwise. Each bullet should become its own commit.
 
 | # | Change | Review note | Commit title suggestion |
 |---|---|---|---|
-| 2.1 | `GET /api/system/settings` now requires admin auth and returns `redactConfigForClient()` (`186b06e`) | Correct and important: the raw config (admin password hash, tokens) was readable by anyone on the LAN. Add a unit test for `redactConfigForClient` (admin/lockdown/secret/token/password keys removed, nested objects cloned). | `fix(api): require admin for /api/system/settings and redact secrets` |
+| 2.1 | `GET /api/system/settings` now requires admin auth and returns `redactConfigForClient()` (`843cf0b`) | Correct and important: the raw config (admin password hash, tokens) was readable by anyone on the LAN. Add a unit test for `redactConfigForClient` (admin/lockdown/secret/token/password keys removed, nested objects cloned). | `fix(api): require admin for /api/system/settings and redact secrets` |
 | 2.2 | `/cups/*` proxy admin-or-local only, token headers stripped, 30 s upstream timeout, cleanup on client close | Correct. Previously the CUPS admin UI (`/cups/admin`) was reachable without auth through port 80, which also bypassed Lockdown's intent. Mention this in `docs/14-lockdown-mode.md` ("the CUPS web UI proxy is admin-only"). | `fix(proxy): CUPS web UI proxy requires admin, no header leak, timeouts` |
 | 2.3 | `/eSCL/*` proxy honours `portal_enabled`, strips auth headers, timeouts | Correct. | `fix(proxy): eSCL proxy respects portal toggle and cleans up on close` |
 | 2.4 | IR remote wizard routes (`/api/hdmi/remote/wizard/*`) require admin-or-local | Correct. | `fix(api): IR wizard routes require admin` |
@@ -89,11 +96,11 @@ otherwise. Each bullet should become its own commit.
 | 2.21 | `hplip-plugin.mjs`: `findModelEntry` no longer matches `m130` to `m1300`; `runWithTty` falls back to a Python pty when `/usr/bin/script` is missing | Correct. Add the `m130`/`m1300` case to `test/hplip-plugin.test.mjs`. | `fix(hplip): exact model prefix match, pty fallback without util-linux script` |
 | 2.22 | `lockdown.mjs`: default PIN hash cached (scrypt was recomputed on every `loadConfig`), mtime-keyed config cache | Correct; `/api/status` called `hashPin` on each request. | `perf(lockdown): cache default PIN hash and parsed config` |
 | 2.23 | `scanner-firmware.mjs` `receiveUpload` deletes the partial file on error | Correct. | `fix(scanner): remove partial firmware upload on error` |
-| 2.24 | `/api/*` unmatched → JSON 404 (`8902ef0`) | Correct. | keep as is |
+| 2.24 | `/api/*` unmatched → JSON 404 (`c2fa512`) | Correct. | keep as is |
 | 2.25 | Frontend: `adminFetch` clears the token and emits `mantaprint:unauthorized` on 401, App logs out on that event; toast timer ref; SSE merge of partial payloads and native reconnect; `copyTextToClipboard` HTTP fallback; `Drivers.jsx` XHR 401/abort/timeout handling; `useApplianceUpdater` and `Updates.jsx` tweaks; `Settings.jsx` Lockdown PIN field no longer shared between enable/disable dialogs | All fine. Keep `Scanner.jsx` pairing removal for 0.3.16 (it belongs to the deprecation). | `fix(admin): logout on 401, toast timer, SSE partial merge, clipboard fallback` |
-| 2.26 | Scan Studio: `useStudioDocument` thumbnail merge, pending-write flush on pagehide/visibility/unmount, single-transaction `refreshCover`/orphan purge, undo fixes (`39ec7b9`) + `useStudioDocument.test.js`; `studioDb`, `renderClient`, `pdfExport`, `fileSave`, `annotations`, `Stage`, `ExportSheet`, `DocumentView`, `documentProcessor` follow-ups | Good; commit `39ec7b9` is the model for how every other commit should be written. Keep `frontend/package.json` test glob change. | keep `39ec7b9`; split the follow-ups into one `fix(studio): …` commit with a message |
+| 2.26 | Scan Studio: `useStudioDocument` thumbnail merge, pending-write flush on pagehide/visibility/unmount, single-transaction `refreshCover`/orphan purge, undo fixes (`8b8191b`) + `useStudioDocument.test.js`; `studioDb`, `renderClient`, `pdfExport`, `fileSave`, `annotations`, `Stage`, `ExportSheet`, `DocumentView`, `documentProcessor` follow-ups | Good; commit `8b8191b` is the model for how every other commit should be written. Keep `frontend/package.json` test glob change. | keep `8b8191b`; split the follow-ups into one `fix(studio): …` commit with a message |
 | 2.27 | `sw.js`: cache-first for `/assets/` and `/ocr/`, keep same-version cache, never intercept `/cups/`, `/eSCL/`, cross-origin | Fine. The cache name is bumped by the maintainer at release time (`mantaprint-app-v0.3.15`). | `fix(pwa): cache-first for hashed assets and OCR models` |
-| 2.28 | `.github/workflows/ci.yml`: runs `npm test` at the root and `npm run lint`; python glob fixed (`fee09e8`) | Fine, but CI will stay red until 2.13 makes the backend suite green. | keep |
+| 2.28 | `.github/workflows/ci.yml`: runs `npm test` at the root and `npm run lint`; python glob fixed (`0f47447`) | Fine, but CI will stay red until 2.13 makes the backend suite green. | keep |
 
 **Docs for 0.3.15:** `CHANGELOG.md` `[0.3.15]` (Fixed: one bullet per row above that a user can
 notice), `docs/14-lockdown-mode.md` (CUPS proxy note), `docs/KNOWN-LIMITATIONS.md` (close the
@@ -183,7 +190,7 @@ boot" reports).
    `parseLpstatPrinters`, `installDeb` dpkg state, `findModelEntry` prefix, `resolveStaticAsset`
    fallbacks and no-store headers, Python `_disambiguate_queue_name`.
 3. Keep `test/http-guards.test.mjs` and `frontend/src/scan/hooks/useStudioDocument.test.js`.
-4. Every commit message: *symptom → cause → fix → how verified*. Commit `39ec7b9` is the template.
+4. Every commit message: *symptom → cause → fix → how verified*. Commit `8b8191b` is the template.
 5. Do not commit `src/web/dist`. Do not bump versions; the maintainer does that at release time.
 6. Run `npm run lint` (installer bash syntax + python compile) before pushing.
 

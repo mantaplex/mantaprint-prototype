@@ -9,7 +9,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map((name) => caches.delete(name))
+        cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
       );
     }).then(() => self.clients.claim())
   );
@@ -18,8 +18,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never intercept API requests, SSE streams, or non-GET requests
-  if (url.pathname.startsWith('/api/') || event.request.method !== 'GET') {
+  // Never intercept cross-origin requests, API requests, CUPS/eSCL proxies, or non-GET requests
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/cups/') ||
+    url.pathname.startsWith('/eSCL/') ||
+    event.request.method !== 'GET'
+  ) {
     return;
   }
 
@@ -28,7 +34,7 @@ self.addEventListener('fetch', (event) => {
     event.request.mode === 'navigate' ||
     url.pathname.endsWith('.html') ||
     url.pathname === '/' ||
-    url.pathname === '/admin' ||
+    url.pathname.startsWith('/admin') ||
     url.pathname.startsWith('/scan')
   ) {
     event.respondWith(
@@ -45,7 +51,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets (hashed JS, CSS, images): Network-first with cache fallback
+  // Immutable content-hashed assets & large local OCR models: Cache-first with network populate
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/ocr/')) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        });
+      })
+    );
+    return;
+  }
+
+  // Other static files (icons, manifest): Network-first with cache fallback
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {

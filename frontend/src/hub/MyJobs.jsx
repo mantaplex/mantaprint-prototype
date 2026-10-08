@@ -4,7 +4,7 @@ import { useI18n } from '../i18n/I18nContext.jsx';
 import { Card, CardHeader, StatusPill } from '../ui/index.js';
 import { loadMyJobs, saveMyJobs } from '../shell/api.js';
 
-const DONE = ['completed', 'canceled', 'cancelled', 'error', 'aborted'];
+const DONE = ['completed', 'canceled', 'cancelled', 'error', 'aborted', 'timeout', 'deleted'];
 
 /** Jobs sent from this browser only (tracked with the per-job token the hub returns); hidden until there is one. */
 export function MyJobsCard({ refreshKey, queueCount, showToast }) {
@@ -14,6 +14,15 @@ export function MyJobsCard({ refreshKey, queueCount, showToast }) {
 
   const poll = useCallback(async () => {
     const list = loadMyJobs();
+    if (!list.length) {
+      setJobs((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const hasActive = list.some((j) => !j.state || !DONE.includes(j.state));
+    if (!hasActive) {
+      setJobs((prev) => (JSON.stringify(prev) === JSON.stringify(list) ? prev : list));
+      return;
+    }
     const next = await Promise.all(list.map(async (j) => {
       if (j.state && DONE.includes(j.state)) return j;
       try {

@@ -4,12 +4,12 @@ import { useI18n } from '../../i18n/I18nContext.jsx';
 import { PageHeader, Card, StatusPill, Button, EmptyState, Modal, SectionLabel, Segmented } from '../../ui/index.js';
 import { adminFetch } from '../../shell/api.js';
 
-const DONE = ['completed', 'canceled', 'cancelled', 'error', 'aborted'];
+const DONE = ['completed', 'canceled', 'cancelled', 'error', 'aborted', 'timeout', 'deleted'];
 
 function tone(state) {
   if (state === 'completed') return 'ok';
-  if (state === 'error' || state === 'aborted') return 'danger';
-  if (state === 'canceled' || state === 'cancelled') return 'idle';
+  if (state === 'error' || state === 'aborted' || state === 'timeout') return 'danger';
+  if (state === 'canceled' || state === 'cancelled' || state === 'deleted') return 'idle';
   return 'info';
 }
 
@@ -42,7 +42,6 @@ export default function Queue({ data, refresh, showToast }) {
   }, []);
 
   useEffect(() => { load(); const id = setInterval(load, 4000); return () => clearInterval(id); }, [load]);
-  useEffect(() => { load(); }, [data?.timestamp, load]);
 
   const printers = data?.printers || [];
   const filtered = printer ? jobs.filter((j) => j.printer === printer) : jobs;

@@ -25,9 +25,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run unit tests (documentProcessor)
-        working-directory: frontend
+      - name: Run unit tests (frontend & backend)
         run: npm test
+
+      - name: Verify version sync and backend syntax
+        run: npm run lint
 
       - name: Verify frontend build
         working-directory: frontend
@@ -46,7 +48,7 @@ jobs:
           python-version: '3.10'
 
       - name: Validate Python script syntax
-        run: python -m py_compile src/core/*.py src/web/*.py
+        run: python -m py_compile src/core/*.py
 
   installer-lint:
     name: Shell Script & Installer Lint

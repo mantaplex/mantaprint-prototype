@@ -38,7 +38,8 @@ export default function Network({ showToast }) {
         if (e.touched) return e;
         const saved = d.ethernet?.config;
         if (saved?.mode === 'static') {
-          return { ...e, mode: 'static', ip: saved.ip || '', prefix: String(saved.prefix || 24), gateway: saved.gateway || '', dns1: saved.dns1 || '1.1.1.1', dns2: saved.dns2 || '' };
+          const dnsList = Array.isArray(saved.dns) ? saved.dns : [saved.dns1, saved.dns2].filter(Boolean);
+          return { ...e, mode: 'static', ip: saved.ip || '', prefix: String(saved.prefix || 24), gateway: saved.gateway || '', dns1: dnsList[0] || '1.1.1.1', dns2: dnsList[1] || '' };
         }
         const liveIp = d.ethernet?.ip && d.ethernet.ip !== '10.11.12.1' ? d.ethernet.ip : '';
         return { ...e, mode: 'dhcp', ip: liveIp, prefix: String(liveIp ? d.ethernet?.prefix || 24 : 24), gateway: liveIp ? d.system?.default_gateway || '' : '' };
@@ -76,14 +77,26 @@ export default function Network({ showToast }) {
   };
 
   const connect = async () => {
+    const ssid = (join?.ssid || '').trim();
+    if (!ssid) return;
+    const sec = String(join?.security || '').toUpperCase();
+    const authMethod = !join?.requires_password ? 'open' : (sec.includes('WPA3') || sec.includes('SAE') ? 'wpa3' : 'wpa2');
     const ok = await run('join', () => adminFetch('/api/network/wifi/connect', {
       method: 'POST',
-      body: { ssid: join.ssid, password, auth_method: join.requires_password ? 'wpa2' : 'open' }
-    }), t('adm.network.joined', { ssid: join.ssid }));
+      body: { ssid, password, auth_method: authMethod }
+    }), t('adm.network.joined', { ssid }));
     if (ok) { setJoin(null); setPassword(''); }
   };
 
-  const ethBody = () => ({ mode: eth.mode, ip: eth.ip.trim(), prefix: parseInt(eth.prefix, 10) || 24, gateway: eth.gateway.trim(), dns1: eth.dns1.trim(), dns2: eth.dns2.trim() });
+  const ethBody = () => ({
+    mode: eth.mode,
+    ip: eth.ip.trim(),
+    prefix: parseInt(eth.prefix, 10) || 24,
+    gateway: eth.gateway.trim(),
+    dns1: eth.dns1.trim(),
+    dns2: eth.dns2.trim(),
+    dns: [eth.dns1.trim(), eth.dns2.trim()].filter(Boolean)
+  });
 
   const applyEth = () => {
     if (eth.mode === 'static') {
@@ -217,7 +230,7 @@ export default function Network({ showToast }) {
           ) : (
             <List>
               {networks.map((n) => (
-                <button key={n.bssid || n.ssid} type="button" onClick={() => { setJoin(n); setPassword(''); }} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04]">
+                <button key={n.bssid || n.ssid} type="button" onClick={() => { setJoin({ ...n, is_hidden: Boolean(n.is_hidden || !n.ssid), ssid: n.ssid || '' }); setPassword(''); }} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04]">
                   <Wifi className={`w-4 h-4 ${n.signal_percent > 60 ? 'text-manta-300' : n.signal_percent > 30 ? 'text-amber-300' : 'text-slate-500'}`} />
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-semibold text-slate-100 truncate">{n.ssid || t('adm.network.hiddenSsid')}</span>
@@ -260,7 +273,7 @@ export default function Network({ showToast }) {
             <Button variant="secondary" icon={busy === 'ping' ? Loader2 : Activity} disabled={busy === 'ping'} onClick={doPing}>{t('adm.network.ping')}</Button>
           </div>
           {ping.result && (
-            <pre className="mt-3 p-3 rounded-xl bg-black/40 border border-white/[0.06] text-[11px] text-slate-300 overflow-x-auto whitespace-pre-wrap">{ping.result.output || ping.result.stdout || JSON.stringify(ping.result, null, 2)}</pre>
+            <pre className="mt-3 p-3 rounded-xl bg-black/40 border border-white/[0.06] text-[11px] text-slate-300 overflow-x-auto whitespace-pre-wrap">{ping.result.raw_output || ping.result.output || ping.result.stdout || JSON.stringify(ping.result, null, 2)}</pre>
           )}
           <div className="mt-3 text-xs text-slate-500">{t('adm.network.dnsServers')}: <span className="font-mono text-slate-300">{(net?.system?.dns_servers || []).join(', ') || '—'}</span></div>
         </Disclosure>
@@ -270,13 +283,20 @@ export default function Network({ showToast }) {
         </Disclosure>
       </div>
 
-      <Modal open={Boolean(join)} onClose={() => setJoin(null)} title={t('adm.network.joinTitle', { ssid: join?.ssid || '' })}
-        footer={<><Button variant="ghost" onClick={() => setJoin(null)}>{t('common.cancel')}</Button><Button variant="primary" icon={busy === 'join' ? Loader2 : Wifi} disabled={busy === 'join' || (join?.requires_password && password.length < 8)} onClick={connect}>{t('adm.network.join')}</Button></>}>
-        {join?.requires_password ? (
-          <Field label={t('adm.network.password')} hint={t('adm.network.passwordHint')}><TextInput type="password" autoFocus value={password} onChange={(ev) => setPassword(ev.target.value)} onKeyDown={(ev) => { if (ev.key === 'Enter' && password.length >= 8) connect(); }} /></Field>
-        ) : (
-          <p className="text-sm text-slate-300">{t('adm.network.openNetwork')}</p>
-        )}
+      <Modal open={Boolean(join)} onClose={() => setJoin(null)} title={t('adm.network.joinTitle', { ssid: join?.ssid || t('adm.network.hiddenSsid') })}
+        footer={<><Button variant="ghost" onClick={() => setJoin(null)}>{t('common.cancel')}</Button><Button variant="primary" icon={busy === 'join' ? Loader2 : Wifi} disabled={busy === 'join' || !join?.ssid?.trim() || (join?.requires_password && password.length < 8)} onClick={connect}>{t('adm.network.join')}</Button></>}>
+        <div className="space-y-3">
+          {join?.is_hidden && (
+            <Field label="SSID">
+              <TextInput autoFocus value={join.ssid || ''} onChange={(ev) => setJoin((j) => ({ ...j, ssid: ev.target.value }))} />
+            </Field>
+          )}
+          {join?.requires_password ? (
+            <Field label={t('adm.network.password')} hint={t('adm.network.passwordHint')}><TextInput type="password" autoFocus={!join?.is_hidden} value={password} onChange={(ev) => setPassword(ev.target.value)} onKeyDown={(ev) => { if (ev.key === 'Enter' && join?.ssid?.trim() && password.length >= 8) connect(); }} /></Field>
+          ) : (
+            <p className="text-sm text-slate-300">{t('adm.network.openNetwork')}</p>
+          )}
+        </div>
         <p className="mt-3 text-[11px] text-amber-300">{t('adm.network.joinWarning')}</p>
       </Modal>
 

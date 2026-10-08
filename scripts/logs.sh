@@ -14,9 +14,6 @@ case "$SERVICE" in
   web)
     UNIT="mantaprint-web.service"
     ;;
-  agent)
-    UNIT="mantaprint-agent.service"
-    ;;
   hotplug)
     UNIT="mantaprint-hotplug.service"
     ;;
@@ -36,7 +33,7 @@ case "$SERVICE" in
     UNIT="mantaprint-tui.service"
     ;;
   all)
-    UNIT="mantaprint-web.service mantaprint-agent.service mantaprint-hotplug.service mantaprint-hdmi.service"
+    UNIT="mantaprint-web.service mantaprint-hotplug.service mantaprint-hdmi.service"
     ;;
   *)
     UNIT="$SERVICE"

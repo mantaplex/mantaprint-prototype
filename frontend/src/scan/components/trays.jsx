@@ -175,7 +175,7 @@ export function EnhanceTray({ edits, onChange, onCommit, onApplyAll, pageCount }
   );
 }
 
-export function CropTray({ edits, draft, onDraft, onApply, onCancel, onAutoDeskew, deskewing, onDeskewChange, onRotate }) {
+export function CropTray({ page, edits, draft, onDraft, onApply, onCancel, onAutoDeskew, deskewing, onDeskewChange, onRotate }) {
   const { t } = useI18n();
   const e = { ...DEFAULT_EDITS, ...edits };
   const presetsCrop = [
@@ -187,8 +187,10 @@ export function CropTray({ edits, draft, onDraft, onApply, onCancel, onAutoDeske
   const applyRatio = (ratio) => {
     if (!ratio) { onDraft({ x: 0, y: 0, w: 1, h: 1 }); return; }
     const cur = draft || { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
-    // keep width, derive height in frame fractions using frame aspect (unknown here -> assume A4 portrait 1:1.414)
-    const frameAspect = 210 / 297;
+    const rot = (((e.rotation || 0) % 360) + 360) % 360;
+    const pw = (rot === 90 || rot === 270) ? (page?.height || 0) : (page?.width || 0);
+    const ph = (rot === 90 || rot === 270) ? (page?.width || 0) : (page?.height || 0);
+    const frameAspect = (pw > 0 && ph > 0) ? (pw / ph) : (210 / 297);
     let w = cur.w;
     let h = (w * frameAspect) / ratio;
     if (h > 1) { h = 1; w = (h * ratio) / frameAspect; }

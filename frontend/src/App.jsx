@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Home from './hub/Home.jsx';
 import AdminApp from './admin/AdminApp.jsx';
 import Login from './admin/Login.jsx';
@@ -61,6 +61,16 @@ function AppContent({ data, isConnected, fetchStatus, showToast, toast, setToast
     const onPop = () => setRoute(routeOf(window.location.pathname));
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // Listen for 401 unauthorized events from adminFetch
+  useEffect(() => {
+    const onUnauth = () => {
+      setAdminToken(null);
+      setAdminUser(null);
+    };
+    window.addEventListener('mantaprint:unauthorized', onUnauth);
+    return () => window.removeEventListener('mantaprint:unauthorized', onUnauth);
   }, []);
 
   // Validate a stored admin token once
@@ -151,10 +161,14 @@ export default function App() {
   const [data, setData] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
 
   const showToast = useCallback((message, type = 'info') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, type });
-    setTimeout(() => setToast((prev) => (prev?.message === message ? null : prev)), 4500);
+    toastTimerRef.current = setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 4500);
   }, []);
 
   const fetchStatus = useCallback(async () => {
@@ -179,13 +193,20 @@ export default function App() {
     let poll = null;
     try {
       es = new EventSource('/api/events');
-      es.onopen = () => { setIsConnected(true); if (poll) { clearInterval(poll); poll = null; } };
+      es.onopen = () => {
+        setIsConnected(true);
+        if (poll) { clearInterval(poll); poll = null; }
+      };
       es.onmessage = (e) => {
-        try { setData(JSON.parse(e.data)); setIsConnected(true); } catch {}
+        try {
+          const incoming = JSON.parse(e.data);
+          setData((prev) => (prev && !incoming.system ? { ...prev, ...incoming } : incoming));
+          setIsConnected(true);
+          if (poll) { clearInterval(poll); poll = null; }
+        } catch {}
       };
       es.onerror = () => {
-        // Keep the last known state; the polling fallback decides whether the hub is reachable.
-        es.close();
+        // Keep the last known state and allow EventSource native auto-reconnect while polling in the meantime.
         if (!poll) poll = setInterval(fetchStatus, 3000);
       };
     } catch {

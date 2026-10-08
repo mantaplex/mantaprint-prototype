@@ -30,8 +30,20 @@ function uploadRaw(url, file, onProgress) {
     xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100)); };
-    xhr.onload = () => { let body = null; try { body = JSON.parse(xhr.responseText); } catch {} resolve(body || { success: false, code: 'generic' }); };
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        try {
+          localStorage.removeItem('mantaprint_admin_token');
+          window.dispatchEvent(new CustomEvent('mantaprint:unauthorized'));
+        } catch {}
+      }
+      let body = null;
+      try { body = JSON.parse(xhr.responseText); } catch {}
+      resolve(body || { success: false, code: 'generic' });
+    };
     xhr.onerror = () => reject(new Error('upload_failed'));
+    xhr.onabort = () => reject(new Error('upload_failed'));
+    xhr.ontimeout = () => reject(new Error('upload_failed'));
     xhr.send(file);
   });
 }
@@ -524,7 +536,8 @@ export default function Drivers({ showToast }) {
       if (r && r.success === false) showToast?.(errorText(r), 'error');
       else showToast?.(okMsg, 'success');
     } catch (e) {
-      let parsed = null; try { parsed = JSON.parse(e.message); } catch {}
+      let parsed = (e?.body && typeof e.body === 'object') ? e.body : null;
+      if (!parsed) { try { parsed = JSON.parse(e.message); } catch {} }
       showToast?.(parsed ? errorText(parsed) : e.message, 'error');
     } finally { setActing(false); load(); }
   }, [errorText, load, showToast]);

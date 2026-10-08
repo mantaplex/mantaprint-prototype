@@ -34,7 +34,7 @@ export const hubEn = {
     privacyNote: 'The file is deleted from the hub as soon as it has been handed to the printer.'
   },
   printerState: { idle: 'Ready', processing: 'Printing', stopped: 'Paused', error: 'Error', offline: 'Offline' },
-  jobState: { processing: 'Printing', pending: 'Waiting', held: 'On hold', completed: 'Printed', canceled: 'Cancelled', cancelled: 'Cancelled', error: 'Failed', aborted: 'Failed' },
+  jobState: { processing: 'Printing', printing: 'Printing', pending: 'Waiting', held: 'On hold', attention: 'Needs attention', completed: 'Printed', canceled: 'Cancelled', cancelled: 'Cancelled', error: 'Failed', aborted: 'Failed', timeout: 'Timed out' },
   hero: {
     title: 'Add a MantaPrint printer to your device',
     desc: 'Printers on this hub usually show up on phones and laptops by themselves. If yours is not in the list, add it by hand with the two steps below.'
@@ -133,7 +133,7 @@ export const hubId = {
     privacyNote: 'Berkas dihapus dari hub segera setelah diserahkan ke printer.'
   },
   printerState: { idle: 'Siap', processing: 'Mencetak', stopped: 'Dijeda', error: 'Galat', offline: 'Offline' },
-  jobState: { processing: 'Mencetak', pending: 'Menunggu', held: 'Ditahan', completed: 'Selesai', canceled: 'Dibatalkan', cancelled: 'Dibatalkan', error: 'Gagal', aborted: 'Gagal' },
+  jobState: { processing: 'Mencetak', printing: 'Mencetak', pending: 'Menunggu', held: 'Ditahan', attention: 'Perlu perhatian', completed: 'Selesai', canceled: 'Dibatalkan', cancelled: 'Dibatalkan', error: 'Gagal', aborted: 'Gagal', timeout: 'Waktu habis' },
   hero: {
     title: 'Tambahkan printer MantaPrint ke perangkat Anda',
     desc: 'Biasanya printer di hub ini muncul sendiri di HP dan laptop. Kalau tidak ada di daftar, tambahkan manual dengan dua langkah di bawah.'

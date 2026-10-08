@@ -2,7 +2,7 @@
 Description=MantaPrint Plug-and-Play Storage Tiering Initializer
 DefaultDependencies=no
 After=systemd-udevd.service
-Before=local-fs.target cups.service mantaprint-web.service mantaprint-agent.service
+Before=local-fs.target cups.service mantaprint-web.service
 Conflicts=shutdown.target
 
 [Service]
@@ -11,8 +11,6 @@ ExecStart=/usr/local/sbin/mantaprint-storage-init.sh
 RemainAfterExit=yes
 TimeoutSec=60
 NoNewPrivileges=yes
-ProtectControlGroups=yes
-ProtectKernelTunables=yes
 StandardOutput=journal
 StandardError=journal
 

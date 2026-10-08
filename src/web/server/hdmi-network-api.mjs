@@ -115,9 +115,19 @@ export function validateEthernetConfig({ mode = 'dhcp', ip = '', prefix = 24, ga
     if (!sameSubnet(cleanIp, cleanGw, cleanPrefix)) throw new Error(`Gateway ${cleanGw} is outside ${cleanIp}/${cleanPrefix}.`);
   }
 
-  const cleanDns1 = String(dns1 || dns || cleanGw || '1.1.1.1').trim();
+  let rawDns1 = dns1;
+  let rawDns2 = dns2;
+  if (!rawDns1 && Array.isArray(dns)) {
+    rawDns1 = dns[0] || '';
+    if (!rawDns2) rawDns2 = dns[1] || '';
+  } else if (!rawDns1 && typeof dns === 'string' && dns.includes(',')) {
+    const parts = dns.split(',').map((s) => s.trim()).filter(Boolean);
+    rawDns1 = parts[0] || '';
+    if (!rawDns2) rawDns2 = parts[1] || '';
+  }
+  const cleanDns1 = String(rawDns1 || dns || cleanGw || '1.1.1.1').trim();
   if (!IPV4_RE.test(cleanDns1)) throw new Error('Invalid primary DNS.');
-  const cleanDns2 = String(dns2 || '').trim();
+  const cleanDns2 = String(rawDns2 || '').trim();
   if (cleanDns2 && !IPV4_RE.test(cleanDns2)) throw new Error('Invalid secondary DNS.');
 
   return { mode, ip: cleanIp, prefix: cleanPrefix, gateway: cleanGw, dns1: cleanDns1, dns2: cleanDns2, mtu: cleanMtu };
@@ -557,15 +567,14 @@ export class HdmiNetworkEngine {
     // Try NetworkManager (nmcli) first if available
     const checkNm = await runCmd('which nmcli 2>/dev/null');
     if (checkNm.success && checkNm.stdout.trim()) {
-      let nmCmd;
-      const safeSsid = cleanSsid.replace(/"/g, '\\"');
-      const safePass = (password || '').replace(/"/g, '\\"');
-      if (auth_method === 'open' || !password) {
-        nmCmd = `nmcli dev wifi connect "${safeSsid}" ${hidden ? 'hidden yes' : ''}`;
-      } else {
-        nmCmd = `nmcli dev wifi connect "${safeSsid}" password "${safePass}" ${hidden ? 'hidden yes' : ''}`;
+      const nmArgs = ['-w', '20', 'dev', 'wifi', 'connect', cleanSsid];
+      if (auth_method !== 'open' && password) {
+        nmArgs.push('password', String(password));
       }
-      const nmRes = await runCmd(nmCmd, 25000);
+      if (hidden) {
+        nmArgs.push('hidden', 'yes');
+      }
+      const nmRes = await runCmdFile('nmcli', nmArgs, 25000);
       if (nmRes.success) {
         this.persistWifiToNetplan(cleanSsid, password, hidden, wifiIface);
         return {
@@ -661,13 +670,14 @@ export class HdmiNetworkEngine {
 
   persistWifiToNetplan(ssid, password, hidden, wifiIface = 'wlan0') {
     try {
-      const safeSsid = String(ssid || '').replace(/["\\]/g, '\\$&');
-      const safePassword = String(password || '').replace(/["\\]/g, '\\$&');
+      const cleanIface = IFACE_RE.test(String(wifiIface || '')) ? wifiIface : 'wlan0';
+      const safeSsid = String(ssid || '').replace(/[\r\n\0]/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const safePassword = String(password || '').replace(/[\r\n\0]/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       const netplanYaml = `network:
   version: 2
   renderer: networkd
   wifis:
-    ${wifiIface}:
+    ${cleanIface}:
       dhcp4: true
       dhcp4-overrides:
         route-metric: 600
@@ -833,8 +843,13 @@ export class HdmiNetworkEngine {
 
     if (!enabled) {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      await runCmd('netplan apply');
+      await runCmdFile('netplan', ['apply'], 15000);
       return { success: true, message: 'VLAN dinonaktifkan.' };
+    }
+
+    const cleanParent = String(parent || 'eth0').trim();
+    if (!IFACE_RE.test(cleanParent)) {
+      throw new Error('Nama antarmuka induk VLAN tidak valid.');
     }
 
     const vlanIdNum = parseInt(vlan_id, 10);
@@ -842,19 +857,20 @@ export class HdmiNetworkEngine {
       throw new Error('VLAN ID harus berada di antara 1 dan 4094.');
     }
 
-    const vlanDev = `${parent}.${vlanIdNum}`;
+    const vlanDev = `${cleanParent}.${vlanIdNum}`;
     let yaml = '';
     if (mode === 'static') {
+      const validated = validateEthernetConfig({ mode: 'static', ip, prefix });
       yaml = `network:
   version: 2
   renderer: networkd
   vlans:
     ${vlanDev}:
       id: ${vlanIdNum}
-      link: ${parent}
+      link: ${cleanParent}
       dhcp4: false
       addresses:
-        - ${ip}/${prefix}
+        - ${validated.ip}/${validated.prefix}
 `;
     } else {
       yaml = `network:
@@ -863,13 +879,13 @@ export class HdmiNetworkEngine {
   vlans:
     ${vlanDev}:
       id: ${vlanIdNum}
-      link: ${parent}
+      link: ${cleanParent}
       dhcp4: true
 `;
     }
 
-    fs.writeFileSync(filePath, yaml, 'utf8');
-    const res = await runCmd('netplan apply');
+    fs.writeFileSync(filePath, yaml, { mode: 0o600, encoding: 'utf8' });
+    const res = await runCmdFile('netplan', ['apply'], 15000);
     if (!res.success) throw new Error(`Gagal mengonfigurasi VLAN: ${res.stderr}`);
 
     return {

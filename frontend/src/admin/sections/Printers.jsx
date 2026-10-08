@@ -74,13 +74,13 @@ function PrinterSheet({ printer, broadcastName, onClose, refresh, showToast, go 
   };
 
   const save = () => run('save', async () => {
+    if ((broadcastName || '') !== form.broadcast_name.trim()) {
+      await adminFetch('/api/system/mdns', { method: 'POST', body: { queue_name: q, custom_name: form.broadcast_name.trim() } });
+    }
     await adminFetch('/api/printers/update', {
       method: 'POST',
       body: { queue_name: q, display_name: form.display_name.trim() || q, location: form.location.trim(), publish_broadcast: form.publish, is_default: form.is_default }
     });
-    if ((broadcastName || '') !== form.broadcast_name.trim()) {
-      await adminFetch('/api/system/mdns', { method: 'POST', body: { queue_name: q, custom_name: form.broadcast_name.trim() } });
-    }
   }, t('adm.printers.saved')).then((ok) => ok && onClose());
 
   return (
@@ -170,7 +170,7 @@ function PrinterSheet({ printer, broadcastName, onClose, refresh, showToast, go 
             </div>
           )}
           <SettingRow title={t('adm.printers.default')} description={t('adm.printers.defaultDesc')}>
-            <Switch checked={form.is_default} onChange={(v) => setForm((f) => ({ ...f, is_default: v }))} label={t('adm.printers.default')} />
+            <Switch checked={form.is_default} disabled={Boolean(printer.is_default)} onChange={(v) => setForm((f) => ({ ...f, is_default: v }))} label={t('adm.printers.default')} />
           </SettingRow>
         </div>
 
@@ -273,7 +273,12 @@ function AddPrinterModal({ onClose, refresh, showToast }) {
           </Field>
         </div>
         <Field label={t('adm.printers.add.protocol')}>
-          <Segmented size="sm" value={f.protocol} onChange={(v) => { const p = PROTOCOLS.find((x) => x.value === v); set({ protocol: v, port: p.port }); setProbe(null); }} options={PROTOCOLS} />
+          <Segmented size="sm" value={f.protocol} onChange={(v) => {
+            const p = PROTOCOLS.find((x) => x.value === v);
+            const nextPath = (v === 'ipp' || v === 'ipps') ? (f.queue_path || 'ipp/print') : (f.queue_path === 'ipp/print' ? '' : f.queue_path);
+            set({ protocol: v, port: p.port, queue_path: nextPath });
+            setProbe(null);
+          }} options={PROTOCOLS} />
         </Field>
         <div className="grid grid-cols-[1fr_110px] gap-3">
           <Field label={t('adm.printers.add.host')}>

@@ -52,36 +52,45 @@ function call(op, payload) {
 
 async function renderPageLocal({ blob, edits, mime, quality, dpi, maxDim, annotations }) {
   const bitmap = await decodeBlob(blob);
-  const canvas = renderToCanvas(bitmap, edits, { canvasFactory: mainThreadCanvasFactory, maxDim });
-  if (bitmap.close) bitmap.close();
-  await paintAnnotations(canvas, annotations);
-  const out = await canvasToBlob(canvas, { mime, quality, dpi });
-  return { blob: out, width: canvas.width, height: canvas.height };
+  try {
+    const canvas = renderToCanvas(bitmap, edits, { canvasFactory: mainThreadCanvasFactory, maxDim });
+    await paintAnnotations(canvas, annotations);
+    const out = await canvasToBlob(canvas, { mime, quality, dpi });
+    return { blob: out, width: canvas.width, height: canvas.height };
+  } finally {
+    if (bitmap.close) bitmap.close();
+  }
 }
 
 async function renderPixelsLocal({ blob, edits, maxDim, annotations }) {
   const bitmap = await decodeBlob(blob);
-  const canvas = renderToCanvas(bitmap, edits, { canvasFactory: mainThreadCanvasFactory, maxDim });
-  if (bitmap.close) bitmap.close();
-  await paintAnnotations(canvas, annotations);
-  const img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-  return { data: img.data.buffer, width: canvas.width, height: canvas.height };
+  try {
+    const canvas = renderToCanvas(bitmap, edits, { canvasFactory: mainThreadCanvasFactory, maxDim });
+    await paintAnnotations(canvas, annotations);
+    const img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    return { data: img.data.buffer, width: canvas.width, height: canvas.height };
+  } finally {
+    if (bitmap.close) bitmap.close();
+  }
 }
 
 async function ktp2in1Local({ front, back, dpi, autoDetect }) {
   const cards = [];
   for (const side of [front, back]) {
     const bitmap = await decodeBlob(side.blob);
-    const canvas = renderToCanvas(bitmap, side.edits, { canvasFactory: mainThreadCanvasFactory, maxDim: 2600 });
-    if (bitmap.close) bitmap.close();
-    let img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-    if (autoDetect) {
-      const contour = detectCardContour(img);
-      if (contour && contour.confidence >= 0.35 && contour.width > 40 && contour.height > 25) {
-        img = cropImageBuffer(img, contour);
+    try {
+      const canvas = renderToCanvas(bitmap, side.edits, { canvasFactory: mainThreadCanvasFactory, maxDim: 2600 });
+      let img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      if (autoDetect && !side.edits?.crop) {
+        const contour = detectCardContour(img);
+        if (contour && contour.confidence >= 0.35 && contour.width > 40 && contour.height > 25) {
+          img = cropImageBuffer(img, contour);
+        }
       }
+      cards.push(img);
+    } finally {
+      if (bitmap.close) bitmap.close();
     }
-    cards.push(img);
   }
   const sheet = createKtp2in1Template(cards[0], cards[1], { dpi, applyToneMapping: true, drawBorder: true });
   const canvas = mainThreadCanvasFactory(sheet.width, sheet.height);
